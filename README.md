@@ -2,8 +2,6 @@
 
 [![CI](https://github.com/roflsunriz/n-mgram/actions/workflows/ci.yml/badge.svg)](https://github.com/roflsunriz/n-mgram/actions/workflows/ci.yml)
 
-## 日本語
-
 Windows向けデスクトップ漫画ビューアです。全メタデータを使った作品検索・フィルター・並べ替え、章選択、縦読み／右綴じ見開きページ読み、読書履歴・進捗・お気に入りのローカル保存、新着章の確認に対応します。
 
 署名済みGitHub Releaseをアプリ内で確認し、更新のダウンロード、インストール、再起動まで行えます。
@@ -38,17 +36,3 @@ bun run tauri build --no-bundle
 ソースコードは [MIT License](LICENSE) で公開します。
 
 リリースと更新署名の運用は [how-to-update.md](how-to-update.md) を参照してください。
-
-## English
-
-n-mgram is a Windows desktop manga reader with full-metadata search, filtering and sorting, chapter selection, vertical scrolling, right-bound two-page spreads, local reading history and progress, favorites, and chapter update checks.
-
-The installed application can check signed GitHub Releases, download an update, install it, and restart. Development requires Bun, Rust stable, and Windows WebView2.
-
-```powershell
-bun install
-bun run check
-bun run tauri dev
-```
-
-The app never calls authentication, posting, mutation, or administrative API endpoints. Favorites, reading history, reading position, and update-check timestamps remain in local WebView storage. Source code is available under the [MIT License](LICENSE). See [how-to-update.md](how-to-update.md) for bilingual release and updater operations.
