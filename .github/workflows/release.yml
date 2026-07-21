@@ -185,4 +185,4 @@ jobs:
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" android-release/*.apk android-release/*.sha256 --clobber
+        run: gh release upload "$RELEASE_TAG" android-release/*.apk android-release/*.sha256 --repo "$GITHUB_REPOSITORY" --clobber
