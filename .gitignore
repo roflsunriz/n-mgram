@@ -1,0 +1,11 @@
+COMMON-AGENTS.md
+subagents/
+node_modules/
+.npm-cache/
+dist/
+coverage/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.DS_Store
+Thumbs.db

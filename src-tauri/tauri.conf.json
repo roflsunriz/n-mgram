@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "n-mgram",
+  "version": "0.1.0",
+  "identifier": "com.roflsunriz.n-mgram",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://business.wel.my.id; img-src 'self' asset: http://asset.localhost https://ihlv1.xyz https://s4.ihlv1.xyz data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    },
+    "windows": [
+      {
+        "title": "n-mgram",
+        "width": 1360,
+        "height": 900,
+        "minWidth": 720,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "createUpdaterArtifacts": true,
+    "shortDescription": "A focused desktop manga reader",
+    "category": "Entertainment"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQyMzQzQUQyMjUxNzc1NjIKUldSaWRSY2wwam8wUWtlZGNydStTSlpoZUNXSEwvcjZtbWVLeVZNQnU1MDBaRHhEQXhZallnRDEK",
+      "endpoints": ["https://github.com/roflsunriz/n-mgram/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

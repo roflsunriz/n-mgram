@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the main n-mgram window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "process:allow-restart",
+    "updater:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://business.wel.my.id" },
+        { "url": "https://ihlv1.xyz" },
+        { "url": "https://s4.ihlv1.xyz" }
+      ]
+    }
+  ]
+}
