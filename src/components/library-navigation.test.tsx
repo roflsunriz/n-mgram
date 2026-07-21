@@ -21,6 +21,7 @@ describe('LibraryNavigation', () => {
 
     expect(screen.getAllByRole('button')).toHaveLength(4);
     expect(screen.getByTestId('library-tab-discover').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByTestId('library-tab-history').textContent).toContain('ライブラリ');
     expect(screen.getByTestId('library-tab-history').textContent).toContain('3');
     expect(screen.getByTestId('library-tab-updates').textContent).toContain('2');
     fireEvent.click(screen.getByTestId('library-tab-search'));
