@@ -23,6 +23,7 @@ describe('AdvancedSearch', () => {
         suggestions={suggestions}
         onChange={vi.fn()}
         onApply={vi.fn()}
+        onQuickApply={vi.fn()}
         onReset={vi.fn()}
         t={createTranslator('ja')}
       />,
@@ -71,6 +72,7 @@ describe('AdvancedSearch', () => {
         suggestions={suggestions}
         onChange={onChange}
         onApply={onApply}
+        onQuickApply={vi.fn()}
         onReset={onReset}
         t={createTranslator('ja')}
       />,
@@ -89,5 +91,33 @@ describe('AdvancedSearch', () => {
     expect(onChange).toHaveBeenCalledWith('status', 'completed');
     expect(onApply).toHaveBeenCalledOnce();
     expect(onReset).toHaveBeenCalledOnce();
+  });
+
+  it('keeps common filters visible and applies quick filter buttons immediately', () => {
+    const onQuickApply = vi.fn();
+    render(
+      <AdvancedSearch
+        filters={createDefaultMangaFilters()}
+        suggestions={suggestions}
+        onChange={vi.fn()}
+        onApply={vi.fn()}
+        onQuickApply={onQuickApply}
+        onReset={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    const details = document.querySelector('.advanced-search-details')!;
+    expect(details.hasAttribute('open')).toBe(false);
+    expect(details.contains(document.querySelector('[data-filter-field="genres"]'))).toBe(false);
+    expect(details.contains(document.querySelector('[data-filter-field="title"]'))).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'action' }));
+    fireEvent.click(screen.getByRole('button', { name: '完結' }));
+    fireEvent.click(screen.getByRole('button', { name: '人気' }));
+
+    expect(onQuickApply).toHaveBeenCalledWith({ genres: 'action' });
+    expect(onQuickApply).toHaveBeenCalledWith({ status: 'completed' });
+    expect(onQuickApply).toHaveBeenCalledWith({ sortBy: 'views', direction: 'desc' });
   });
 });

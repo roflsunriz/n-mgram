@@ -39,6 +39,19 @@ export const CloseIcon = (props: IconProps) => (
     <path d="m6 6 12 12M18 6 6 18" />
   </svg>
 );
+export const FullscreenIcon = ({ active = false, ...props }: IconProps & { active?: boolean }) => (
+  <svg {...base} {...props}>
+    {active ? (
+      <>
+        <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+      </>
+    ) : (
+      <>
+        <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+      </>
+    )}
+  </svg>
+);
 export const BookIcon = (props: IconProps) => (
   <svg {...base} {...props}>
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5v13Z" />

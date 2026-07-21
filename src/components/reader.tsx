@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Chapter, Manga } from '../api/client';
 import type { MessageKey } from '../i18n';
 import {
@@ -6,7 +7,7 @@ import {
   saveReaderSettings,
   type ReaderFitMode,
 } from '../storage/reader-settings-store';
-import { ArrowLeftIcon, ArrowRightIcon, BookIcon, CloseIcon } from './icons';
+import { ArrowLeftIcon, ArrowRightIcon, BookIcon, CloseIcon, FullscreenIcon } from './icons';
 import { PageImage } from './page-image';
 import {
   getLastSpreadStart,
@@ -47,12 +48,15 @@ export function Reader({
   const [singlePage, setSinglePage] = useState(isCompactPortrait);
   const [blockedPageUrls, setBlockedPageUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
+  const windowsFullscreenAvailable = isWindowsTauriApp();
   const chapter = chapters[chapterIndex];
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollAppliedRef = useRef(false);
   const toolbarRef = useRef<HTMLElement>(null);
   const controlsTimerRef = useRef<number | undefined>(undefined);
   const pointerInToolbarRef = useRef(false);
+  const fullscreenRef = useRef(false);
   const gestureRef = useRef<
     | {
         pointerId: number;
@@ -149,6 +153,23 @@ export function Reader({
     ],
   );
 
+  const changeFullscreen = useCallback(
+    async (nextFullscreen?: boolean) => {
+      if (!windowsFullscreenAvailable) return;
+      const appWindow = getCurrentWindow();
+      try {
+        const next = nextFullscreen ?? !(await appWindow.isFullscreen());
+        await appWindow.setFullscreen(next);
+        fullscreenRef.current = next;
+        setFullscreen(next);
+      } catch {
+        fullscreenRef.current = false;
+        setFullscreen(false);
+      }
+    },
+    [windowsFullscreenAvailable],
+  );
+
   useEffect(() => {
     if (!window.matchMedia) return;
     const media = window.matchMedia(SINGLE_PAGE_QUERY);
@@ -159,15 +180,43 @@ export function Reader({
   }, []);
 
   useEffect(() => {
+    if (!windowsFullscreenAvailable) return;
+    let active = true;
+    void getCurrentWindow()
+      .isFullscreen()
+      .then((value) => {
+        if (!active) return;
+        fullscreenRef.current = value;
+        setFullscreen(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      if (fullscreenRef.current)
+        void getCurrentWindow()
+          .setFullscreen(false)
+          .catch(() => undefined);
+    };
+  }, [windowsFullscreenAvailable]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      revealControls();
-      if (event.key === 'Escape') onClose();
+      if (windowsFullscreenAvailable && event.key === 'F11') {
+        event.preventDefault();
+        void changeFullscreen();
+        return;
+      }
+      if (event.key === 'Escape') {
+        if (fullscreenRef.current) void changeFullscreen(false);
+        else onClose();
+        return;
+      }
       if (mode === 'paged' && event.key === 'ArrowLeft') changeSpread('next');
       if (mode === 'paged' && event.key === 'ArrowRight') changeSpread('previous');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [changeSpread, mode, onClose, revealControls]);
+  }, [changeFullscreen, changeSpread, mode, onClose, windowsFullscreenAvailable]);
 
   useEffect(() => {
     scheduleControlsHide();
@@ -228,8 +277,6 @@ export function Reader({
       onPointerMove={(event) => {
         if (event.pointerType === 'mouse') revealControls();
       }}
-      onFocusCapture={revealControls}
-      onBlurCapture={scheduleControlsHide}
     >
       <header
         ref={toolbarRef}
@@ -242,6 +289,8 @@ export function Reader({
           pointerInToolbarRef.current = false;
           scheduleControlsHide();
         }}
+        onFocusCapture={revealControls}
+        onBlurCapture={scheduleControlsHide}
       >
         <button className="icon-button reader-close" onClick={onClose} aria-label={t('close')}>
           <CloseIcon />
@@ -258,13 +307,13 @@ export function Reader({
             <button
               type="button"
               className="reader-chapter-button"
-              data-testid="reader-previous-chapter-header"
-              onClick={() => changeChapter(chapterIndex - 1)}
-              disabled={chapterIndex === 0}
-              aria-label={t('previousChapter')}
-              title={t('previousChapter')}
+              data-testid="reader-next-chapter-header"
+              onClick={() => changeChapter(chapterIndex + 1)}
+              disabled={chapterIndex === chapters.length - 1}
+              aria-label={t('nextChapter')}
+              title={t('nextChapter')}
             >
-              <ArrowRightIcon />
+              <ArrowLeftIcon />
             </button>
             <select
               value={chapterIndex}
@@ -280,13 +329,13 @@ export function Reader({
             <button
               type="button"
               className="reader-chapter-button"
-              data-testid="reader-next-chapter-header"
-              onClick={() => changeChapter(chapterIndex + 1)}
-              disabled={chapterIndex === chapters.length - 1}
-              aria-label={t('nextChapter')}
-              title={t('nextChapter')}
+              data-testid="reader-previous-chapter-header"
+              onClick={() => changeChapter(chapterIndex - 1)}
+              disabled={chapterIndex === 0}
+              aria-label={t('previousChapter')}
+              title={t('previousChapter')}
             >
-              <ArrowLeftIcon />
+              <ArrowRightIcon />
             </button>
           </div>
           <div className="segmented">
@@ -321,12 +370,26 @@ export function Reader({
             <option value="original">{t('original')}</option>
           </select>
         </div>
-        <span className="reader-page-status">
-          {t('pageStatus', {
-            current: mode === 'paged' ? pageLabel : pageIndex + 1,
-            total: pageUrls.length,
-          })}
-        </span>
+        <div className="reader-toolbar-actions">
+          <span className="reader-page-status">
+            {t('pageStatus', {
+              current: mode === 'paged' ? pageLabel : pageIndex + 1,
+              total: pageUrls.length,
+            })}
+          </span>
+          {windowsFullscreenAvailable && (
+            <button
+              type="button"
+              className={`icon-button reader-fullscreen ${fullscreen ? 'is-active' : ''}`}
+              data-testid="reader-fullscreen"
+              onClick={() => void changeFullscreen()}
+              aria-label={t(fullscreen ? 'exitFullscreen' : 'enterFullscreen')}
+              title={t(fullscreen ? 'exitFullscreen' : 'enterFullscreen')}
+            >
+              <FullscreenIcon active={fullscreen} />
+            </button>
+          )}
+        </div>
       </header>
       <div
         ref={scrollRef}
@@ -386,6 +449,7 @@ export function Reader({
                 onBlocked={markPageBlocked}
                 loadFailedLabel={t('imageLoadFailed')}
                 retryLabel={t('reloadImage')}
+                eager={index < 10 || Math.abs(index - activePageIndex) <= 8}
               />
             ))}
             <ChapterEndNavigation
@@ -475,6 +539,10 @@ function isCompactPortrait() {
   return window.matchMedia?.(SINGLE_PAGE_QUERY).matches ?? false;
 }
 
+function isWindowsTauriApp() {
+  return /Windows/i.test(window.navigator.userAgent) && Reflect.has(window, '__TAURI_INTERNALS__');
+}
+
 function ReaderImage({
   src,
   index,
@@ -482,6 +550,7 @@ function ReaderImage({
   onBlocked,
   loadFailedLabel,
   retryLabel,
+  eager,
 }: {
   src: string;
   index: number;
@@ -489,6 +558,7 @@ function ReaderImage({
   onBlocked: (url: string) => void;
   loadFailedLabel: string;
   retryLabel: string;
+  eager: boolean;
 }) {
   return (
     <PageImage
@@ -496,7 +566,7 @@ function ReaderImage({
       url={src}
       alt={`${index + 1}`}
       pageIndex={index}
-      eager={index < 6}
+      eager={eager}
       loadFailedLabel={loadFailedLabel}
       retryLabel={retryLabel}
       onVisible={() => onVisible(index)}

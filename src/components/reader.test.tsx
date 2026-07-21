@@ -5,6 +5,18 @@ import type { Chapter, Manga } from '../api/client';
 import { createTranslator } from '../i18n';
 import { Reader } from './reader';
 
+const windowApi = vi.hoisted(() => ({
+  state: { fullscreen: false },
+  isFullscreen: vi.fn(async () => false),
+  setFullscreen: vi.fn(async (value: boolean) => {
+    void value;
+  }),
+}));
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => windowApi,
+}));
+
 class IntersectionObserverStub {
   observe() {}
   disconnect() {}
@@ -18,10 +30,16 @@ Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
   vi.useRealTimers();
 });
 
 beforeEach(() => {
+  windowApi.state.fullscreen = false;
+  windowApi.isFullscreen.mockReset().mockImplementation(async () => windowApi.state.fullscreen);
+  windowApi.setFullscreen.mockReset().mockImplementation(async (value: boolean) => {
+    windowApi.state.fullscreen = value;
+  });
   const values = new Map<string, string>();
   const storage: Storage = {
     get length() {
@@ -138,6 +156,34 @@ describe('Reader', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('toggles Windows fullscreen from the header and F11', async () => {
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      configurable: true,
+    });
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true });
+
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    const button = await screen.findByTestId('reader-fullscreen');
+    fireEvent.click(button);
+    await waitFor(() => expect(windowApi.setFullscreen).toHaveBeenCalledWith(true));
+    expect(button.getAttribute('aria-label')).toBe('全画面表示を終了（F11）');
+
+    fireEvent.keyDown(window, { key: 'F11' });
+    await waitFor(() => expect(windowApi.setFullscreen).toHaveBeenLastCalledWith(false));
+  });
+
   it('hides idle controls and reveals them on pointer movement', () => {
     vi.useFakeTimers();
     render(
@@ -159,6 +205,36 @@ describe('Reader', () => {
 
     fireEvent.pointerMove(reader, { pointerType: 'mouse' });
     expect(reader.classList.contains('controls-visible')).toBe(true);
+  });
+
+  it('keeps hidden controls suppressed while turning pages', () => {
+    vi.useFakeTimers();
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    const reader = screen.getByTestId('reader');
+    const help = document.querySelector('.reader-help')!;
+    act(() => vi.advanceTimersByTime(2_500));
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByText('2–3 / 3')).toBeTruthy();
+    expect(reader.classList.contains('controls-hidden')).toBe(true);
+    expect(help.classList.contains('is-hidden')).toBe(true);
+
+    const previousPage = screen.getByRole('button', { name: '前へ' });
+    fireEvent.focus(previousPage);
+    fireEvent.click(previousPage);
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(reader.classList.contains('controls-hidden')).toBe(true);
   });
 
   it('uses one page in compact portrait and advances with a left swipe', async () => {
@@ -271,6 +347,9 @@ describe('Reader', () => {
     );
 
     const chapterSelect = screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement;
+    const headerSelector = document.querySelector('.reader-chapter-selector');
+    expect(headerSelector?.children[0]).toBe(screen.getByTestId('reader-next-chapter-header'));
+    expect(headerSelector?.children[2]).toBe(screen.getByTestId('reader-previous-chapter-header'));
     fireEvent.click(screen.getByTestId('reader-next-chapter-header'));
     expect(chapterSelect.value).toBe('1');
 

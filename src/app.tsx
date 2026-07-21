@@ -27,6 +27,7 @@ import {
 } from './search/manga-search';
 import { checkHistoryUpdates } from './services/history-update-checker';
 import { loadFavoriteCatalog } from './services/favorite-catalog-loader';
+import { prefetchChapterEdges } from './services/chapter-edge-prefetch';
 import {
   clearHistory,
   getHistory,
@@ -266,6 +267,8 @@ export function App() {
   }, [restoreHistoryMetadata]);
 
   useEffect(() => {
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
     window.history.replaceState(
       {
         [NAVIGATION_STATE_KEY]: 'library',
@@ -281,7 +284,10 @@ export function App() {
       }
     };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
   }, []);
 
   const submitSearch = (filters: MangaFilters) => {
@@ -298,8 +304,8 @@ export function App() {
     submitSearch(nextFilters);
   };
 
-  const applyAdvancedFilters = () => {
-    const nextFilters = { ...draftFilters, keyword: query.trim() };
+  const applyAdvancedFilters = (overrides: Partial<MangaFilters> = {}) => {
+    const nextFilters = { ...draftFilters, ...overrides, keyword: query.trim() };
     setDraftFilters(nextFilters);
     submitSearch(nextFilters);
   };
@@ -317,6 +323,7 @@ export function App() {
   };
 
   const openManga = async (manga: Manga, addHistoryEntry = true) => {
+    const hasReadingHistory = getProgress(manga.id) !== undefined;
     setSelected(manga);
     setChapters([]);
     setDetailError(undefined);
@@ -327,6 +334,7 @@ export function App() {
       const [detail, chapterList] = await Promise.all([getManga(manga.id), getChapters(manga.id)]);
       setSelected(detail);
       setChapters(chapterList);
+      if (!hasReadingHistory) void prefetchChapterEdges(chapterList);
     } catch (caught: unknown) {
       setDetailError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -539,6 +547,7 @@ export function App() {
                 setDraftFilters((current) => ({ ...current, [key]: value }) as MangaFilters)
               }
               onApply={applyAdvancedFilters}
+              onQuickApply={applyAdvancedFilters}
               onReset={resetFilters}
               t={t}
             />
@@ -772,24 +781,32 @@ function mangaFromReadingProgress(entry: ReadingProgress): Manga {
 }
 
 function collectMetadataSuggestions(items: readonly Manga[]): MetadataSuggestions {
-  const collect = (values: string[], split = false) =>
-    [
-      ...new Set(
-        values
-          .flatMap((value) => (split ? value.split(',') : [value]))
-          .map((value) => value.trim())
-          .filter(Boolean),
-      ),
-    ]
+  const collect = (values: string[]) =>
+    [...new Set(values.map((value) => value.trim()).filter(Boolean))]
       .sort((left, right) => left.localeCompare(right, 'ja', { sensitivity: 'base' }))
       .slice(0, 300);
+  const collectByFrequency = (values: string[]) => {
+    const counts = new Map<string, { count: number; value: string }>();
+    for (const value of values.flatMap((entry) => entry.split(','))) {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      const key = trimmed.normalize('NFKC').toLocaleLowerCase();
+      const current = counts.get(key);
+      counts.set(key, { count: (current?.count ?? 0) + 1, value: current?.value ?? trimmed });
+    }
+    return [...counts.values()]
+      .sort(
+        (left, right) =>
+          right.count - left.count ||
+          left.value.localeCompare(right.value, 'ja', { sensitivity: 'base' }),
+      )
+      .map(({ value }) => value)
+      .slice(0, 300);
+  };
   return {
     authors: collect(items.map((manga) => manga.authors)),
     artists: collect(items.map((manga) => manga.artists)),
-    genres: collect(
-      items.map((manga) => manga.genres),
-      true,
-    ),
+    genres: collectByFrequency(items.map((manga) => manga.genres)),
     magazines: collect(items.map((manga) => manga.magazines)),
     translationGroups: collect(items.map((manga) => manga.transGroup)),
   };

@@ -19,12 +19,40 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  validate:
+    name: Validate release source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Verify tag and project versions
+        shell: bash
+        run: |
+          tag_version="${RELEASE_TAG#v}"
+          tauri_version=$(jq -r '.version' src-tauri/tauri.conf.json)
+          package_version=$(jq -r '.version' package.json)
+          cargo_version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' src-tauri/Cargo.toml | head -n 1)
+          test "$tag_version" = "$tauri_version"
+          test "$tag_version" = "$package_version"
+          test "$tag_version" = "$cargo_version"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+
   release-windows:
     name: Signed Windows release
+    needs: validate
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Keep repository files as LF
         run: git config --global core.autocrlf false
@@ -34,6 +62,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      - name: Restore Bun download cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
@@ -42,22 +76,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify tag and project versions
-        shell: pwsh
-        run: |
-          $tagVersion = '${{ env.RELEASE_TAG }}'.TrimStart('v')
-          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"$').Matches[0].Groups[1].Value
-          if ($tagVersion -ne $tauriVersion -or $tagVersion -ne $packageVersion -or $tagVersion -ne $cargoVersion) {
-            throw "Tag v$tagVersion does not match tauri=$tauriVersion package=$packageVersion cargo=$cargoVersion"
-          }
-
-      - name: Run quality checks
-        shell: pwsh
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          bun run check
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
       - name: Build signed release and updater metadata
         uses: tauri-apps/tauri-action@v1
@@ -78,9 +98,8 @@ jobs:
           updaterJsonPreferNsis: true
           uploadUpdaterSignatures: true
 
-  release-android:
-    name: Signed Android APK release
-    needs: release-windows
+  build-android:
+    name: Build signed Android APK
     runs-on: ubuntu-latest
     steps:
       - name: Keep repository files as LF
@@ -95,6 +114,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/**/gradle-wrapper.properties
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;29.0.14206865'
@@ -138,7 +161,28 @@ jobs:
           sha256sum "$output_apk" > "$output_apk.sha256"
           echo "path=$output_apk" >> "$GITHUB_OUTPUT"
 
+      - name: Preserve APK until the Windows release exists
+        uses: actions/upload-artifact@v7
+        with:
+          name: signed-android-apk
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.path }}.sha256
+          if-no-files-found: error
+          retention-days: 2
+
+  publish-android:
+    name: Attach Android APK to release
+    needs: [release-windows, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: signed-android-apk
+          path: android-release
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ env.RELEASE_TAG }}" "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.path }}.sha256" --clobber
+        run: gh release upload "$RELEASE_TAG" android-release/*.apk android-release/*.sha256 --clobber

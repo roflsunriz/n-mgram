@@ -15,7 +15,7 @@
       "allow": [
         { "url": "https://business.wel.my.id" },
         { "url": "https://ihlv1.xyz" },
-        { "url": "https://s4.ihlv1.xyz" },
+        { "url": "https://*.ihlv1.xyz" },
         { "url": "https://api.github.com/repos/roflsunriz/n-mgram/releases/latest" }
       ]
     }

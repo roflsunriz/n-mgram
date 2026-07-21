@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getCollection, searchManga } from './api/client';
 import type { Manga } from './api/client';
 import { App } from './app';
+import { prefetchChapterEdges } from './services/chapter-edge-prefetch';
 
 const restoredManga: Manga = {
   id: 7,
@@ -51,6 +53,8 @@ vi.mock('./api/client', () => ({
   searchManga: vi.fn(async () => []),
 }));
 
+vi.mock('./services/chapter-edge-prefetch', () => ({ prefetchChapterEdges: vi.fn() }));
+
 class IntersectionObserverStub {
   observe() {}
   disconnect() {}
@@ -84,6 +88,11 @@ describe('App library pages', () => {
     vi.stubGlobal('localStorage', createStorage());
     vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
     Object.defineProperty(window.navigator, 'language', { value: 'ja-JP', configurable: true });
+    Object.defineProperty(window.history, 'scrollRestoration', {
+      value: 'auto',
+      writable: true,
+      configurable: true,
+    });
     localStorage.clear();
     localStorage.setItem(
       'n-mgram.library',
@@ -111,6 +120,7 @@ describe('App library pages', () => {
 
     fireEvent.click(screen.getByTestId('library-tab-history'));
     await waitFor(() => expect(screen.getByText('復元された作品')).toBeTruthy());
+    expect(screen.getByText('読書履歴とお気に入りをまとめて確認・管理できます。')).toBeTruthy();
     expect(screen.queryByText('作品 #7')).toBeNull();
     expect(screen.getByText('第3話 · 0% 読了')).toBeTruthy();
 
@@ -119,7 +129,10 @@ describe('App library pages', () => {
     expect(screen.queryByText('復元された作品')).toBeNull();
 
     fireEvent.click(screen.getByTestId('library-tab-updates'));
-    expect(screen.getByRole('heading', { name: '新しい章' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '更新センター' })).toBeTruthy();
+    expect(
+      screen.getByText('新着チャプターの確認とアプリのアップデートをまとめて管理できます。'),
+    ).toBeTruthy();
     const updatesStack = document.querySelector('.updates-stack');
     expect(updatesStack?.children[0]).toBe(screen.getByTestId('chapter-updates-panel'));
     expect(updatesStack?.children[1]).toBe(screen.getByTestId('app-updater-panel'));
@@ -127,6 +140,7 @@ describe('App library pages', () => {
 
   it('returns every non-discover library tab to Discover on browser back', () => {
     render(<App />);
+    expect(window.history.scrollRestoration).toBe('manual');
     const discoverState = { nMgramScreen: 'library', nMgramLibraryPage: 'discover' };
 
     for (const page of ['search', 'history', 'updates'] as const) {
@@ -136,6 +150,41 @@ describe('App library pages', () => {
       fireEvent.popState(window, { state: discoverState });
       expect(screen.getByRole('heading', { name: '見つける' })).toBeTruthy();
     }
+  });
+
+  it('applies a quick sort button immediately from the search page', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId('library-tab-search'));
+
+    fireEvent.click(screen.getByRole('button', { name: '人気' }));
+
+    await waitFor(() => expect(searchManga).toHaveBeenCalledOnce());
+    expect(vi.mocked(searchManga).mock.calls[0]?.[0]).toMatchObject({ page: 1, size: 100 });
+    expect(screen.getByRole('button', { name: '人気' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('prefetches chapter edges only when opening a manga without reading history', async () => {
+    const unreadManga = { ...restoredManga, id: 8, name: '未読の作品' };
+    vi.mocked(getCollection).mockResolvedValueOnce([unreadManga]);
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('manga-8')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('manga-8').querySelector('.cover-button')!);
+
+    await waitFor(() => expect(prefetchChapterEdges).toHaveBeenCalledOnce());
+  });
+
+  it('does not prefetch chapter edges when the manga already has reading history', async () => {
+    vi.mocked(getCollection).mockResolvedValueOnce([restoredManga]);
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('manga-7')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('manga-7').querySelector('.cover-button')!);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: '復元された作品' })).toBeTruthy(),
+    );
+
+    expect(prefetchChapterEdges).not.toHaveBeenCalled();
   });
 
   it('opens a history entry directly at the saved chapter and lets browser back return to history', async () => {
@@ -154,7 +203,7 @@ describe('App library pages', () => {
     fireEvent.popState(window, {
       state: { nMgramScreen: 'library', nMgramLibraryPage: 'history' },
     });
-    expect(screen.getByRole('heading', { name: '読んだ作品' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'マイライブラリ' })).toBeTruthy();
   });
 
   it('shows saved favorites below reading history', async () => {

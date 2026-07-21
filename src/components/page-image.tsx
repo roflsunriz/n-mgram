@@ -20,7 +20,7 @@ interface Props {
 }
 
 const PAGE_PRELOAD_MARGIN = '12000px 0px';
-const MAX_CONCURRENT_PAGE_LOADS = 4;
+const MAX_CONCURRENT_PAGE_LOADS = 8;
 const RETRY_DELAYS_MS = [600, 1_800];
 const MAX_DECODE_RETRIES = 1;
 
