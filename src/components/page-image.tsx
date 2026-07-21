@@ -6,15 +6,33 @@ interface Props {
   alt: string;
   className: string;
   eager?: boolean;
+  hidden?: boolean;
   onBlocked: (url: string) => void;
   onVisible?: () => void;
 }
 
-export function PageImage({ url, alt, className, eager = false, onBlocked, onVisible }: Props) {
+const PAGE_PRELOAD_MARGIN = '3000px 0px';
+
+export function PageImage({
+  url,
+  alt,
+  className,
+  eager = false,
+  hidden = false,
+  onBlocked,
+  onVisible,
+}: Props) {
   const elementRef = useRef<HTMLElement>(null);
   const [loadRequested, setLoadRequested] = useState(eager);
   const [source, setSource] = useState<string>();
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!eager) return;
+    // 先読み対象になった画像は、対象範囲を外れても読み込み結果を保持する。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadRequested(true);
+  }, [eager]);
 
   useEffect(() => {
     if (loadRequested) return;
@@ -24,7 +42,7 @@ export function PageImage({ url, alt, className, eager = false, onBlocked, onVis
       ([entry]) => {
         if (entry?.isIntersecting) setLoadRequested(true);
       },
-      { rootMargin: '1400px 0px' },
+      { rootMargin: PAGE_PRELOAD_MARGIN },
     );
     observer.observe(element);
     return () => observer.disconnect();
@@ -80,6 +98,8 @@ export function PageImage({ url, alt, className, eager = false, onBlocked, onVis
         src={source}
         alt={alt}
         decoding="async"
+        hidden={hidden}
+        aria-hidden={hidden || undefined}
       />
     );
   }
@@ -88,6 +108,7 @@ export function PageImage({ url, alt, className, eager = false, onBlocked, onVis
     <div
       ref={elementRef as React.RefObject<HTMLDivElement>}
       className={`${className} page-image-placeholder ${failed ? 'is-failed' : ''}`}
+      hidden={hidden}
       aria-hidden="true"
     />
   );

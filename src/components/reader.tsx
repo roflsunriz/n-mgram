@@ -196,12 +196,15 @@ export function Reader({
       : spread.start === spread.end
         ? String(spread.start + 1)
         : `${spread.start + 1}–${spread.end + 1}`;
-  const rightPageUrl = pageUrls[spread.right];
-  const leftPageUrl = spread.left === undefined ? undefined : pageUrls[spread.left];
   const changeChapter = (next: number) => {
     setChapterIndex(next);
     setPageIndex(0);
   };
+  const atChapterEnd =
+    pageUrls.length === 0 ||
+    (singlePage
+      ? activePageIndex >= pageUrls.length - 1
+      : getNextSpreadStart(activePageIndex, pageUrls.length) === undefined);
   return (
     <div
       className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'}`}
@@ -235,17 +238,41 @@ export function Reader({
           </div>
         </div>
         <div className="reader-controls">
-          <select
-            value={chapterIndex}
-            onChange={(event) => changeChapter(Number(event.target.value))}
-            aria-label={t('chapters')}
-          >
-            {chapters.map((item, index) => (
-              <option key={`${item.mid}-${item.chapter}`} value={index}>
-                {t('chapter', { number: item.chapter })}
-              </option>
-            ))}
-          </select>
+          <div className="reader-chapter-selector">
+            <button
+              type="button"
+              className="reader-chapter-button"
+              data-testid="reader-previous-chapter-header"
+              onClick={() => changeChapter(chapterIndex - 1)}
+              disabled={chapterIndex === 0}
+              aria-label={t('previousChapter')}
+              title={t('previousChapter')}
+            >
+              <ArrowRightIcon />
+            </button>
+            <select
+              value={chapterIndex}
+              onChange={(event) => changeChapter(Number(event.target.value))}
+              aria-label={t('chapters')}
+            >
+              {chapters.map((item, index) => (
+                <option key={`${item.mid}-${item.chapter}`} value={index}>
+                  {t('chapter', { number: item.chapter })}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="reader-chapter-button"
+              data-testid="reader-next-chapter-header"
+              onClick={() => changeChapter(chapterIndex + 1)}
+              disabled={chapterIndex === chapters.length - 1}
+              aria-label={t('nextChapter')}
+              title={t('nextChapter')}
+            >
+              <ArrowLeftIcon />
+            </button>
+          </div>
           <div className="segmented">
             <button
               className={mode === 'continuous' ? 'active' : ''}
@@ -333,39 +360,51 @@ export function Reader({
         }}
       >
         {mode === 'continuous' ? (
-          pageUrls.map((src, index) => (
-            <ReaderImage
-              key={src}
-              src={src}
-              index={index}
-              onVisible={setPageIndex}
-              onBlocked={markPageBlocked}
+          <>
+            {pageUrls.map((src, index) => (
+              <ReaderImage
+                key={`${src}-${index}`}
+                src={src}
+                index={index}
+                onVisible={setPageIndex}
+                onBlocked={markPageBlocked}
+              />
+            ))}
+            <ChapterEndNavigation
+              chapterIndex={chapterIndex}
+              chapterCount={chapters.length}
+              onChange={changeChapter}
+              t={t}
             />
-          ))
+          </>
         ) : (
           <div
             className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''} ${singlePage ? 'is-single-page' : ''}`}
           >
-            {leftPageUrl && (
-              <PageImage
-                key={leftPageUrl}
-                className="reader-image paged-image spread-page-left"
-                url={leftPageUrl}
-                alt={`${(spread.left ?? spread.start) + 1}`}
-                eager
-                onBlocked={markPageBlocked}
-              />
-            )}
-            {rightPageUrl && (
-              <PageImage
-                key={rightPageUrl}
-                className="reader-image paged-image spread-page-right"
-                url={rightPageUrl}
-                alt={`${spread.right + 1}`}
-                eager
-                onBlocked={markPageBlocked}
-              />
-            )}
+            {pageUrls.map((url, index) => {
+              const isLeft = spread.left === index;
+              const isRight = spread.right === index;
+              const isVisible = isLeft || isRight;
+              const nearCurrentSpread =
+                index >= Math.max(0, spread.start - 2) && index <= spread.end + 4;
+              return (
+                <PageImage
+                  key={`${url}-${index}`}
+                  className={`reader-image paged-image ${
+                    isLeft
+                      ? 'spread-page-left'
+                      : isRight
+                        ? 'spread-page-right'
+                        : 'paged-image-prefetch'
+                  }`}
+                  url={url}
+                  alt={`${index + 1}`}
+                  eager={nearCurrentSpread}
+                  hidden={!isVisible}
+                  onBlocked={markPageBlocked}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -395,6 +434,15 @@ export function Reader({
           </button>
         </>
       )}
+      {mode === 'paged' && atChapterEnd && (
+        <ChapterEndNavigation
+          className="reader-chapter-footer-paged"
+          chapterIndex={chapterIndex}
+          chapterCount={chapters.length}
+          onChange={changeChapter}
+          t={t}
+        />
+      )}
       <div className={`reader-help ${controlsVisible ? 'is-visible' : 'is-hidden'}`}>
         {t('readerHelp')}
       </div>
@@ -422,9 +470,47 @@ function ReaderImage({
       className="reader-image"
       url={src}
       alt={`${index + 1}`}
-      eager={index < 2}
+      eager={index < 3}
       onVisible={() => onVisible(index)}
       onBlocked={onBlocked}
     />
+  );
+}
+
+function ChapterEndNavigation({
+  className = '',
+  chapterIndex,
+  chapterCount,
+  onChange,
+  t,
+}: {
+  className?: string;
+  chapterIndex: number;
+  chapterCount: number;
+  onChange: (chapterIndex: number) => void;
+  t: Props['t'];
+}) {
+  return (
+    <nav className={`reader-chapter-footer ${className}`} aria-label={t('chapters')}>
+      <button
+        type="button"
+        className="reader-chapter-button"
+        data-testid="reader-previous-chapter-footer"
+        onClick={() => onChange(chapterIndex - 1)}
+        disabled={chapterIndex === 0}
+      >
+        {t('previousChapter')}
+      </button>
+      <p>{t('chapterComplete')}</p>
+      <button
+        type="button"
+        className="reader-chapter-button"
+        data-testid="reader-next-chapter-footer"
+        onClick={() => onChange(chapterIndex + 1)}
+        disabled={chapterIndex === chapterCount - 1}
+      >
+        {t('nextChapter')}
+      </button>
+    </nav>
   );
 }

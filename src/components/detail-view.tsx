@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Chapter, Manga } from '../api/client';
 import type { MessageKey } from '../i18n';
 import type { ReadingProgress } from '../storage/library-store';
@@ -30,6 +31,7 @@ export function DetailView({
   onRetry,
   t,
 }: Props) {
+  const [newestFirst, setNewestFirst] = useState(true);
   const resumeIndex = progress
     ? Math.max(
         0,
@@ -83,6 +85,16 @@ export function DetailView({
         <div className="section-heading">
           <h2>{t('chapters')}</h2>
           <span>{chapters.length}</span>
+          {chapters.length > 1 && (
+            <button
+              type="button"
+              className="chapter-order-button"
+              data-testid="chapter-order-toggle"
+              onClick={() => setNewestFirst((current) => !current)}
+            >
+              {newestFirst ? t('showOldestFirst') : t('showNewestFirst')}
+            </button>
+          )}
         </div>
         {loading && <div className="status-panel">{t('loading')}</div>}
         {error && (
@@ -95,7 +107,7 @@ export function DetailView({
           <div className="status-panel">{t('noChapters')}</div>
         )}
         <div className="chapter-list">
-          {[...chapters].reverse().map((chapter) => {
+          {(newestFirst ? [...chapters].reverse() : chapters).map((chapter) => {
             const chapterIndex = chapters.indexOf(chapter);
             const completed =
               progress &&

@@ -40,6 +40,7 @@ import {
 } from './storage/library-store';
 
 type Screen = 'library' | 'detail' | 'reader';
+const NAVIGATION_STATE_KEY = 'nMgramScreen';
 const COLLECTION_PAGE_SIZE = 24;
 const SEARCH_PAGE_SIZE = 100;
 
@@ -79,6 +80,17 @@ export function App() {
   const [historyMetadataFailures, setHistoryMetadataFailures] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string>();
+
+  const navigateForward = useCallback((nextScreen: Screen) => {
+    window.history.pushState({ [NAVIGATION_STATE_KEY]: nextScreen }, '');
+    setScreen(nextScreen);
+  }, []);
+
+  const navigateBack = useCallback((fallback: Screen) => {
+    const currentScreen = getNavigationScreen(window.history.state);
+    if (currentScreen && currentScreen !== 'library') window.history.back();
+    else setScreen(fallback);
+  }, []);
 
   const visibleSearchItems = useMemo(
     () => filterAndSortManga(searchItems, appliedFilters),
@@ -175,6 +187,15 @@ export function App() {
     void restoreHistoryMetadata();
   }, [restoreHistoryMetadata]);
 
+  useEffect(() => {
+    window.history.replaceState({ [NAVIGATION_STATE_KEY]: 'library' }, '');
+    const handlePopState = (event: PopStateEvent) => {
+      setScreen(getNavigationScreen(event.state) ?? 'library');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const submitSearch = (filters: MangaFilters) => {
     setAppliedFilters(filters);
     setSearchStarted(true);
@@ -207,12 +228,13 @@ export function App() {
     setSearchHasMore(false);
   };
 
-  const openManga = async (manga: Manga) => {
+  const openManga = async (manga: Manga, addHistoryEntry = true) => {
     setSelected(manga);
     setChapters([]);
     setDetailError(undefined);
     setDetailLoading(true);
-    setScreen('detail');
+    if (addHistoryEntry) navigateForward('detail');
+    else setScreen('detail');
     try {
       const [detail, chapterList] = await Promise.all([getManga(manga.id), getChapters(manga.id)]);
       setSelected(detail);
@@ -232,7 +254,7 @@ export function App() {
       Math.max(0, (target?.content.length ?? 1) - 1),
     );
     setReaderStart({ chapter, page: safePage });
-    setScreen('reader');
+    navigateForward('reader');
   };
 
   const recordProgress = useCallback(
@@ -257,31 +279,64 @@ export function App() {
     [chapters, selected],
   );
 
-  const openHistoryEntry = (entry: ReadingProgress) => {
+  const getHistoryManga = (entry: ReadingProgress): Manga => {
     const knownManga = allLoadedItems.find((item) => item.id === entry.mangaId);
-    const summary: Manga = knownManga ?? {
-      id: entry.mangaId,
-      name: entry.title,
-      slug: '',
-      authors: '',
-      transGroup: '',
-      artists: '',
-      released: 0,
-      otherName: '',
-      genres: '',
-      description: '',
-      mStatus: 0,
-      lastUpdate: '',
-      post: '',
-      cover: entry.cover,
-      lastChapter: String(entry.latestChapter),
-      views: 0,
-      submitter: 0,
-      groupUploader: 0,
-      hidden: 0,
-      magazines: '',
-    };
-    void openManga(summary);
+    return (
+      knownManga ?? {
+        id: entry.mangaId,
+        name: entry.title,
+        slug: '',
+        authors: '',
+        transGroup: '',
+        artists: '',
+        released: 0,
+        otherName: '',
+        genres: '',
+        description: '',
+        mStatus: 0,
+        lastUpdate: '',
+        post: '',
+        cover: entry.cover,
+        lastChapter: String(entry.latestChapter),
+        views: 0,
+        submitter: 0,
+        groupUploader: 0,
+        hidden: 0,
+        magazines: '',
+      }
+    );
+  };
+
+  const openHistoryEntry = async (entry: ReadingProgress) => {
+    const summary = getHistoryManga(entry);
+    setDetailLoading(true);
+    setDetailError(undefined);
+    try {
+      const [detail, chapterList] = await Promise.all([
+        getManga(entry.mangaId),
+        getChapters(entry.mangaId),
+      ]);
+      const chapterIndex = Math.max(
+        0,
+        chapterList.findIndex((item) => item.chapter === entry.chapter),
+      );
+      const chapter = chapterList[chapterIndex];
+      const safePage = Math.min(
+        Math.max(entry.page, 0),
+        Math.max(0, (chapter?.content.length ?? 1) - 1),
+      );
+      setSelected(detail);
+      setChapters(chapterList);
+      setReaderStart({ chapter: chapterIndex, page: safePage });
+      navigateForward('reader');
+    } catch (caught: unknown) {
+      setSelected(summary);
+      setChapters([]);
+      setDetailError(caught instanceof Error ? caught.message : String(caught));
+      navigateForward('detail');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const refreshChapterUpdates = async () => {
@@ -309,7 +364,7 @@ export function App() {
         chapters={chapters}
         initialChapter={readerStart.chapter}
         initialPage={readerStart.page}
-        onClose={() => setScreen('detail')}
+        onClose={() => navigateBack('detail')}
         onProgress={recordProgress}
         t={t}
       />
@@ -325,10 +380,10 @@ export function App() {
         loading={detailLoading}
         error={detailError}
         progress={getProgress(selected.id)}
-        onBack={() => setScreen('library')}
+        onBack={() => navigateBack('library')}
         onFavorite={() => updateFavorite(selected.id)}
         onRead={startReading}
-        onRetry={() => void openManga(selected)}
+        onRetry={() => void openManga(selected, false)}
         t={t}
       />
     );
@@ -475,7 +530,7 @@ export function App() {
                 lastUpdateCheckAt={lastUpdateCheckAt}
                 checkingUpdates={checkingUpdates}
                 updateCheckFailures={updateCheckFailures}
-                onOpen={openHistoryEntry}
+                onOpen={(entry) => void openManga(getHistoryManga(entry))}
                 onCheckUpdates={() => void refreshChapterUpdates()}
                 t={t}
               />
@@ -485,6 +540,12 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function getNavigationScreen(state: unknown): Screen | undefined {
+  if (!state || typeof state !== 'object') return undefined;
+  const value = Reflect.get(state, NAVIGATION_STATE_KEY);
+  return value === 'library' || value === 'detail' || value === 'reader' ? value : undefined;
 }
 
 interface PageHeadingProps {

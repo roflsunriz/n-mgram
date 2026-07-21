@@ -70,6 +70,18 @@ const chapters: Chapter[] = [
   },
 ];
 
+const multipleChapters: Chapter[] = [
+  chapters[0]!,
+  {
+    mid: 1,
+    name: 'Test Manga',
+    chapter: 2,
+    content: ['https://ihlv1.xyz/2-1.webp', 'https://ihlv1.xyz/2-2.webp'],
+    time: '',
+    views: 0,
+  },
+];
+
 describe('Reader', () => {
   it('shows right-bound spreads and advances with the left arrow', async () => {
     const onProgress = vi.fn();
@@ -243,5 +255,48 @@ describe('Reader', () => {
     expect((screen.getByTestId('reader-fit') as HTMLSelectElement).value).toBe('height');
     expect(document.querySelector('.reader-stage')?.classList.contains('mode-paged')).toBe(true);
     expect(document.querySelector('.reader-stage')?.classList.contains('fit-height')).toBe(true);
+  });
+
+  it('navigates chapters from both the header and the end-of-chapter controls', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={multipleChapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    const chapterSelect = screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement;
+    fireEvent.click(screen.getByTestId('reader-next-chapter-header'));
+    expect(chapterSelect.value).toBe('1');
+
+    fireEvent.click(screen.getByTestId('reader-previous-chapter-footer'));
+    expect(chapterSelect.value).toBe('0');
+    expect(screen.getByText('この章の最後です')).toBeTruthy();
+  });
+
+  it('keeps nearby paged images mounted and preloaded while only showing the active spread', async () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+
+    await waitFor(() => {
+      const prefetched = document.querySelectorAll('.paged-image-prefetch[hidden]');
+      expect(prefetched).toHaveLength(2);
+      expect([...prefetched].every((element) => element.getAttribute('src'))).toBe(true);
+    });
   });
 });

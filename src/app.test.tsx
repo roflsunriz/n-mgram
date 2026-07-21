@@ -30,9 +30,36 @@ const restoredManga: Manga = {
 vi.mock('./api/client', () => ({
   getCollection: vi.fn(async () => []),
   getManga: vi.fn(async () => restoredManga),
-  getChapters: vi.fn(async () => []),
+  getChapters: vi.fn(async () => [
+    {
+      mid: 7,
+      name: '復元された作品',
+      chapter: 3,
+      content: [
+        'https://ihlv1.xyz/3-1.webp',
+        'https://ihlv1.xyz/3-2.webp',
+        'https://ihlv1.xyz/3-3.webp',
+        'https://ihlv1.xyz/3-4.webp',
+        'https://ihlv1.xyz/3-5.webp',
+        'https://ihlv1.xyz/3-6.webp',
+      ],
+      time: '',
+      views: 0,
+    },
+  ]),
+  resolvePageImage: vi.fn(async (url: string) => ({ blocked: false, source: url })),
   searchManga: vi.fn(async () => []),
 }));
+
+class IntersectionObserverStub {
+  observe() {}
+  disconnect() {}
+}
+
+Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+  value: vi.fn(),
+  configurable: true,
+});
 
 function createStorage(): Storage {
   const values = new Map<string, string>();
@@ -51,6 +78,7 @@ function createStorage(): Storage {
 describe('App library pages', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', createStorage());
+    vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
     Object.defineProperty(window.navigator, 'language', { value: 'ja-JP', configurable: true });
     localStorage.clear();
     localStorage.setItem(
@@ -88,5 +116,19 @@ describe('App library pages', () => {
 
     fireEvent.click(screen.getByTestId('library-tab-updates'));
     expect(screen.getByRole('heading', { name: '新しい章' })).toBeTruthy();
+  });
+
+  it('opens a history entry directly at the saved chapter and lets browser back return to history', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId('library-tab-history'));
+    await waitFor(() => expect(screen.getByTestId('history-open-7')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('history-open-7'));
+    await waitFor(() => expect(screen.getByTestId('reader')).toBeTruthy());
+    expect(screen.getByText('5 / 6')).toBeTruthy();
+    expect((screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement).value).toBe('0');
+
+    fireEvent.popState(window, { state: { nMgramScreen: 'library' } });
+    expect(screen.getByRole('heading', { name: '読んだ作品' })).toBeTruthy();
   });
 });
