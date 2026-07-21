@@ -6,7 +6,7 @@ interface Props {
   manga: Manga;
   favorite: boolean;
   onOpen: (manga: Manga) => void;
-  onFavorite: (id: number) => void;
+  onFavorite: (manga: Manga) => void;
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
 }
 
@@ -25,7 +25,7 @@ export function MangaCard({ manga, favorite, onOpen, onFavorite, t }: Props) {
       </div>
       <button
         className={`icon-button favorite-button ${favorite ? 'is-active' : ''}`}
-        onClick={() => onFavorite(manga.id)}
+        onClick={() => onFavorite(manga)}
         aria-label={favorite ? t('unfavorite') : t('favorite')}
       >
         <HeartIcon filled={favorite} />

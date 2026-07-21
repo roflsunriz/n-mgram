@@ -1,7 +1,12 @@
 import type { Manga } from '../api/client';
 
 const STORAGE_KEY = 'n-mgram.library';
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
+
+export interface FavoriteEntry {
+  mangaId: number;
+  title: string;
+}
 
 export interface ReadingProgress {
   mangaId: number;
@@ -17,8 +22,8 @@ export interface ReadingProgress {
 export type ReadingProgressUpdate = Omit<ReadingProgress, 'updatedAt'>;
 
 export interface StoredLibrary {
-  version: 2;
-  favorites: number[];
+  version: 3;
+  favorites: FavoriteEntry[];
   history: Record<string, ReadingProgress>;
   lastUpdateCheckAt?: string;
 }
@@ -60,7 +65,7 @@ function isStoredLibrary(value: unknown): value is StoredLibrary {
   const candidate = value as Record<string, unknown>;
   return (
     candidate.version === STORAGE_VERSION &&
-    isFavoriteList(candidate.favorites) &&
+    isFavoriteEntries(candidate.favorites) &&
     isProgressRecord(candidate.history) &&
     (candidate.lastUpdateCheckAt === undefined || typeof candidate.lastUpdateCheckAt === 'string')
   );
@@ -69,14 +74,33 @@ function isStoredLibrary(value: unknown): value is StoredLibrary {
 function migrateLegacyLibrary(value: unknown): StoredLibrary | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const candidate = value as Record<string, unknown>;
+  if (candidate.version === 2) {
+    if (
+      !isLegacyFavoriteList(candidate.favorites) ||
+      !isProgressRecord(candidate.history) ||
+      (candidate.lastUpdateCheckAt !== undefined && typeof candidate.lastUpdateCheckAt !== 'string')
+    ) {
+      return undefined;
+    }
+    const history = candidate.history;
+    return {
+      version: STORAGE_VERSION,
+      favorites: candidate.favorites.map((mangaId) => ({
+        mangaId,
+        title: history[String(mangaId)]?.title ?? '',
+      })),
+      history,
+      ...(candidate.lastUpdateCheckAt ? { lastUpdateCheckAt: candidate.lastUpdateCheckAt } : {}),
+    };
+  }
+
   if (
     candidate.version !== 1 ||
-    !isFavoriteList(candidate.favorites) ||
+    !isLegacyFavoriteList(candidate.favorites) ||
     !candidate.progress ||
     typeof candidate.progress !== 'object'
-  ) {
+  )
     return undefined;
-  }
 
   const history: Record<string, ReadingProgress> = {};
   for (const [key, entry] of Object.entries(candidate.progress as Record<string, unknown>)) {
@@ -90,11 +114,29 @@ function migrateLegacyLibrary(value: unknown): StoredLibrary | undefined {
     };
   }
 
-  return { version: STORAGE_VERSION, favorites: candidate.favorites, history };
+  return {
+    version: STORAGE_VERSION,
+    favorites: candidate.favorites.map((mangaId) => ({ mangaId, title: '' })),
+    history,
+  };
 }
 
-function isFavoriteList(value: unknown): value is number[] {
+function isLegacyFavoriteList(value: unknown): value is number[] {
   return Array.isArray(value) && value.every((id) => Number.isInteger(id) && id > 0);
+}
+
+function isFavoriteEntries(value: unknown): value is FavoriteEntry[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        !!entry &&
+        typeof entry === 'object' &&
+        Number.isInteger(Reflect.get(entry, 'mangaId')) &&
+        Number(Reflect.get(entry, 'mangaId')) > 0 &&
+        typeof Reflect.get(entry, 'title') === 'string',
+    )
+  );
 }
 
 function isProgressRecord(value: unknown): value is Record<string, ReadingProgress> {
@@ -148,11 +190,11 @@ function sortedHistory(library: StoredLibrary): ReadingProgress[] {
   return Object.values(library.history).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function toggleFavorite(mangaId: number): number[] {
+export function toggleFavorite(manga: Pick<Manga, 'id' | 'name'>): FavoriteEntry[] {
   const library = loadLibrary();
-  library.favorites = library.favorites.includes(mangaId)
-    ? library.favorites.filter((id) => id !== mangaId)
-    : [...library.favorites, mangaId];
+  library.favorites = library.favorites.some((entry) => entry.mangaId === manga.id)
+    ? library.favorites.filter((entry) => entry.mangaId !== manga.id)
+    : [...library.favorites, { mangaId: manga.id, title: manga.name }];
   saveLibrary(library);
   return library.favorites;
 }
@@ -197,6 +239,9 @@ export function updateHistoryCatalog(
 ): StoredLibrary {
   const library = loadLibrary();
   for (const manga of mangaList) {
+    library.favorites = library.favorites.map((favorite) =>
+      favorite.mangaId === manga.id ? { ...favorite, title: manga.name } : favorite,
+    );
     const entry = library.history[String(manga.id)];
     if (!entry) continue;
     const latestChapter = parseChapterNumber(manga.lastChapter);

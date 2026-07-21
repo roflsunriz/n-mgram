@@ -49,6 +49,7 @@ export function Reader({
   const [controlsVisible, setControlsVisible] = useState(true);
   const chapter = chapters[chapterIndex];
   const scrollRef = useRef<HTMLDivElement>(null);
+  const initialScrollAppliedRef = useRef(false);
   const toolbarRef = useRef<HTMLElement>(null);
   const controlsTimerRef = useRef<number | undefined>(undefined);
   const pointerInToolbarRef = useRef(false);
@@ -184,6 +185,21 @@ export function Reader({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [chapterIndex, mode]);
+
+  useEffect(() => {
+    if (initialScrollAppliedRef.current || chapterIndex !== initialChapter || initialPage <= 0)
+      return;
+    initialScrollAppliedRef.current = true;
+    if (mode !== 'continuous') return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = scrollRef.current?.querySelector<HTMLElement>(
+        `[data-page-index="${initialPage}"]`,
+      );
+      target?.scrollIntoView({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [chapterIndex, initialChapter, initialPage, mode]);
 
   if (!chapter) return null;
 
@@ -368,6 +384,8 @@ export function Reader({
                 index={index}
                 onVisible={setPageIndex}
                 onBlocked={markPageBlocked}
+                loadFailedLabel={t('imageLoadFailed')}
+                retryLabel={t('reloadImage')}
               />
             ))}
             <ChapterEndNavigation
@@ -399,8 +417,11 @@ export function Reader({
                   }`}
                   url={url}
                   alt={`${index + 1}`}
+                  pageIndex={index}
                   eager={nearCurrentSpread}
                   hidden={!isVisible}
+                  loadFailedLabel={t('imageLoadFailed')}
+                  retryLabel={t('reloadImage')}
                   onBlocked={markPageBlocked}
                 />
               );
@@ -459,18 +480,25 @@ function ReaderImage({
   index,
   onVisible,
   onBlocked,
+  loadFailedLabel,
+  retryLabel,
 }: {
   src: string;
   index: number;
   onVisible: (index: number) => void;
   onBlocked: (url: string) => void;
+  loadFailedLabel: string;
+  retryLabel: string;
 }) {
   return (
     <PageImage
       className="reader-image"
       url={src}
       alt={`${index + 1}`}
-      eager={index < 3}
+      pageIndex={index}
+      eager={index < 6}
+      loadFailedLabel={loadFailedLabel}
+      retryLabel={retryLabel}
       onVisible={() => onVisible(index)}
       onBlocked={onBlocked}
     />

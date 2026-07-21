@@ -68,8 +68,8 @@ describe('library store', () => {
   });
 
   it('toggles favorites without duplicates', () => {
-    expect(toggleFavorite(7)).toEqual([7]);
-    expect(toggleFavorite(7)).toEqual([]);
+    expect(toggleFavorite(manga)).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
+    expect(toggleFavorite(manga)).toEqual([]);
   });
 
   it('saves a complete history entry and restores reading progress', () => {
@@ -102,19 +102,19 @@ describe('library store', () => {
   });
 
   it('deletes a history entry without deleting its favorite', () => {
-    toggleFavorite(7);
+    toggleFavorite(manga);
     saveProgress(progress);
     expect(removeHistory(7)).toEqual([]);
-    expect(loadLibrary().favorites).toEqual([7]);
+    expect(loadLibrary().favorites).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
   });
 
   it('clears all history without deleting favorites', () => {
-    toggleFavorite(7);
+    toggleFavorite(manga);
     saveProgress(progress);
     saveProgress({ ...progress, mangaId: 8, title: '別の作品' });
     expect(clearHistory()).toEqual([]);
     expect(getHistory()).toEqual([]);
-    expect(loadLibrary().favorites).toEqual([7]);
+    expect(loadLibrary().favorites).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
   });
 
   it('migrates version 1 progress without discarding favorites or read position', () => {
@@ -129,15 +129,38 @@ describe('library store', () => {
       }),
     );
     expect(loadLibrary()).toMatchObject({
-      version: 2,
-      favorites: [7],
+      version: 3,
+      favorites: [{ mangaId: 7, title: '' }],
       history: { 7: { mangaId: 7, chapter: 3, page: 11, pageCount: 0 } },
     });
-    expect(JSON.parse(localStorage.getItem('n-mgram.library') ?? '{}').version).toBe(2);
+    expect(JSON.parse(localStorage.getItem('n-mgram.library') ?? '{}').version).toBe(3);
+  });
+
+  it('migrates version 2 favorite IDs and uses known history titles', () => {
+    localStorage.setItem(
+      'n-mgram.library',
+      JSON.stringify({
+        version: 2,
+        favorites: [7],
+        history: {
+          7: { ...progress, updatedAt: '2026-07-20T12:00:00.000Z' },
+        },
+      }),
+    );
+    expect(loadLibrary().favorites).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
+  });
+
+  it('fills a migrated favorite title from catalog metadata', () => {
+    localStorage.setItem(
+      'n-mgram.library',
+      JSON.stringify({ version: 2, favorites: [7], history: {} }),
+    );
+    loadLibrary();
+    expect(updateHistoryCatalog([manga]).favorites).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
   });
 
   it('recovers from incompatible data', () => {
     localStorage.setItem('n-mgram.library', '{"version":0}');
-    expect(loadLibrary()).toEqual({ version: 2, favorites: [], history: {} });
+    expect(loadLibrary()).toEqual({ version: 3, favorites: [], history: {} });
   });
 });

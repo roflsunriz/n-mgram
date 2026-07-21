@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   getChapters,
   getCollection,
@@ -11,6 +11,7 @@ import {
 import { AdvancedSearch, type MetadataSuggestions } from './components/advanced-search';
 import { AppUpdaterPanel } from './components/app-updater-panel';
 import { DetailView } from './components/detail-view';
+import { FavoritesPanel } from './components/favorites-panel';
 import { BookIcon, SearchIcon } from './components/icons';
 import { LibraryNavigation, type LibraryPage } from './components/library-navigation';
 import { MangaCard } from './components/manga-card';
@@ -25,6 +26,7 @@ import {
   type MangaFilters,
 } from './search/manga-search';
 import { checkHistoryUpdates } from './services/history-update-checker';
+import { loadFavoriteCatalog } from './services/favorite-catalog-loader';
 import {
   clearHistory,
   getHistory,
@@ -41,6 +43,7 @@ import {
 
 type Screen = 'library' | 'detail' | 'reader';
 const NAVIGATION_STATE_KEY = 'nMgramScreen';
+const NAVIGATION_PAGE_STATE_KEY = 'nMgramLibraryPage';
 const COLLECTION_PAGE_SIZE = 24;
 const SEARCH_PAGE_SIZE = 100;
 
@@ -71,7 +74,11 @@ export function App() {
   const [selected, setSelected] = useState<Manga>();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [readerStart, setReaderStart] = useState({ chapter: 0, page: 0 });
-  const [favorites, setFavorites] = useState(initialLibrary.favorites);
+  const [favoriteEntries, setFavoriteEntries] = useState(initialLibrary.favorites);
+  const [favoriteCatalog, setFavoriteCatalog] = useState<Manga[]>([]);
+  const [favoriteCatalogLoading, setFavoriteCatalogLoading] = useState(false);
+  const [favoriteCatalogFailures, setFavoriteCatalogFailures] = useState(0);
+  const favoriteAttemptedIdsRef = useRef(new Set<number>());
   const [history, setHistory] = useState(getHistory);
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState(initialLibrary.lastUpdateCheckAt);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -92,6 +99,38 @@ export function App() {
     else setScreen(fallback);
   }, []);
 
+  const navigateLibraryPage = useCallback(
+    (nextPage: LibraryPage) => {
+      if (nextPage === libraryPage) return;
+      const currentPage = getNavigationLibraryPage(window.history.state);
+      if (nextPage === 'discover') {
+        if (currentPage && currentPage !== 'discover') window.history.back();
+        else {
+          window.history.replaceState(
+            {
+              [NAVIGATION_STATE_KEY]: 'library',
+              [NAVIGATION_PAGE_STATE_KEY]: 'discover',
+            },
+            '',
+          );
+        }
+        setLibraryPage('discover');
+        return;
+      }
+
+      const method = currentPage === 'discover' ? 'pushState' : 'replaceState';
+      window.history[method](
+        {
+          [NAVIGATION_STATE_KEY]: 'library',
+          [NAVIGATION_PAGE_STATE_KEY]: nextPage,
+        },
+        '',
+      );
+      setLibraryPage(nextPage);
+    },
+    [libraryPage],
+  );
+
   const visibleSearchItems = useMemo(
     () => filterAndSortManga(searchItems, appliedFilters),
     [appliedFilters, searchItems],
@@ -99,6 +138,16 @@ export function App() {
   const allLoadedItems = useMemo(
     () => deduplicateManga([...discoverItems, ...searchItems]),
     [discoverItems, searchItems],
+  );
+  const favorites = useMemo(() => favoriteEntries.map((entry) => entry.mangaId), [favoriteEntries]);
+  const favoriteItems = useMemo(
+    () =>
+      deduplicateManga([
+        ...history.filter(hasCompleteHistoryMetadata).map(mangaFromReadingProgress),
+        ...allLoadedItems,
+        ...favoriteCatalog,
+      ]).filter((manga) => favorites.includes(manga.id)),
+    [allLoadedItems, favoriteCatalog, favorites, history],
   );
   const metadataSuggestions = useMemo(
     () => collectMetadataSuggestions(allLoadedItems),
@@ -108,6 +157,35 @@ export function App() {
     () => history.filter(hasCompleteHistoryMetadata).filter(hasNewChapter).length,
     [history],
   );
+
+  const loadFavoriteMetadata = useCallback(async (mangaIds: readonly number[]) => {
+    if (mangaIds.length === 0) {
+      setFavoriteCatalogFailures(0);
+      return;
+    }
+    setFavoriteCatalogLoading(true);
+    setFavoriteCatalogFailures(0);
+    try {
+      const result = await loadFavoriteCatalog(mangaIds);
+      const library = updateHistoryCatalog(result.manga);
+      setFavoriteCatalog((current) => deduplicateManga([...current, ...result.manga]));
+      setFavoriteEntries(library.favorites);
+      setFavoriteCatalogFailures(result.failed);
+    } finally {
+      setFavoriteCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (libraryPage !== 'history') return;
+    const knownIds = new Set(favoriteItems.map((manga) => manga.id));
+    const missingIds = favorites.filter(
+      (mangaId) => !knownIds.has(mangaId) && !favoriteAttemptedIdsRef.current.has(mangaId),
+    );
+    if (missingIds.length === 0) return;
+    missingIds.forEach((mangaId) => favoriteAttemptedIdsRef.current.add(mangaId));
+    void loadFavoriteMetadata(missingIds);
+  }, [favoriteItems, favorites, libraryPage, loadFavoriteMetadata]);
 
   const loadDiscover = useCallback(
     async (nextPage: number, append: boolean, order: CollectionSort) => {
@@ -188,9 +266,19 @@ export function App() {
   }, [restoreHistoryMetadata]);
 
   useEffect(() => {
-    window.history.replaceState({ [NAVIGATION_STATE_KEY]: 'library' }, '');
+    window.history.replaceState(
+      {
+        [NAVIGATION_STATE_KEY]: 'library',
+        [NAVIGATION_PAGE_STATE_KEY]: 'discover',
+      },
+      '',
+    );
     const handlePopState = (event: PopStateEvent) => {
-      setScreen(getNavigationScreen(event.state) ?? 'library');
+      const nextScreen = getNavigationScreen(event.state) ?? 'library';
+      setScreen(nextScreen);
+      if (nextScreen === 'library') {
+        setLibraryPage(getNavigationLibraryPage(event.state) ?? 'discover');
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -199,7 +287,7 @@ export function App() {
   const submitSearch = (filters: MangaFilters) => {
     setAppliedFilters(filters);
     setSearchStarted(true);
-    setLibraryPage('search');
+    navigateLibraryPage('search');
     void loadSearch(1, false, filters);
   };
 
@@ -246,7 +334,13 @@ export function App() {
     }
   };
 
-  const updateFavorite = (id: number) => setFavorites(toggleFavorite(id));
+  const updateFavorite = (manga: Manga) => {
+    const nextFavorites = toggleFavorite(manga);
+    if (nextFavorites.some((entry) => entry.mangaId === manga.id)) {
+      favoriteAttemptedIdsRef.current.delete(manga.id);
+    }
+    setFavoriteEntries(nextFavorites);
+  };
   const startReading = (chapter: number, savedPage = 0) => {
     const target = chapters[chapter];
     const safePage = Math.min(
@@ -281,30 +375,7 @@ export function App() {
 
   const getHistoryManga = (entry: ReadingProgress): Manga => {
     const knownManga = allLoadedItems.find((item) => item.id === entry.mangaId);
-    return (
-      knownManga ?? {
-        id: entry.mangaId,
-        name: entry.title,
-        slug: '',
-        authors: '',
-        transGroup: '',
-        artists: '',
-        released: 0,
-        otherName: '',
-        genres: '',
-        description: '',
-        mStatus: 0,
-        lastUpdate: '',
-        post: '',
-        cover: entry.cover,
-        lastChapter: String(entry.latestChapter),
-        views: 0,
-        submitter: 0,
-        groupUploader: 0,
-        hidden: 0,
-        magazines: '',
-      }
-    );
+    return knownManga ?? mangaFromReadingProgress(entry);
   };
 
   const openHistoryEntry = async (entry: ReadingProgress) => {
@@ -381,7 +452,7 @@ export function App() {
         error={detailError}
         progress={getProgress(selected.id)}
         onBack={() => navigateBack('library')}
-        onFavorite={() => updateFavorite(selected.id)}
+        onFavorite={() => updateFavorite(selected)}
         onRead={startReading}
         onRetry={() => void openManga(selected, false)}
         t={t}
@@ -392,7 +463,7 @@ export function App() {
   return (
     <div className={`app-shell page-${libraryPage}`}>
       <header className="topbar">
-        <button className="brand" type="button" onClick={() => setLibraryPage('discover')}>
+        <button className="brand" type="button" onClick={() => navigateLibraryPage('discover')}>
           <span className="brand-mark">
             <BookIcon />
           </span>
@@ -416,7 +487,7 @@ export function App() {
         activePage={libraryPage}
         historyCount={history.length}
         updateCount={updateCount}
-        onNavigate={setLibraryPage}
+        onNavigate={navigateLibraryPage}
         t={t}
       />
       <main id="top" className="library-view">
@@ -501,17 +572,42 @@ export function App() {
               hint={t('historyPageHint')}
               eyebrow="READING LOG"
             />
-            <ReadingHistoryPanel
-              history={history}
-              locale={locale}
-              restoringMetadata={restoringHistoryMetadata}
-              metadataFailures={historyMetadataFailures}
-              onOpen={openHistoryEntry}
-              onDelete={(mangaId) => setHistory(removeHistory(mangaId))}
-              onClear={() => setHistory(clearHistory())}
-              onRetryMetadata={() => void restoreHistoryMetadata()}
-              t={t}
-            />
+            <div className="history-stack">
+              <ReadingHistoryPanel
+                history={history}
+                locale={locale}
+                restoringMetadata={restoringHistoryMetadata}
+                metadataFailures={historyMetadataFailures}
+                onOpen={openHistoryEntry}
+                onDelete={(mangaId) => setHistory(removeHistory(mangaId))}
+                onClear={() => setHistory(clearHistory())}
+                onRetryMetadata={() => void restoreHistoryMetadata()}
+                t={t}
+              />
+              <FavoritesPanel
+                items={favoriteItems}
+                savedTitles={favoriteEntries
+                  .filter(
+                    (entry) =>
+                      entry.title.length > 0 &&
+                      !favoriteItems.some((manga) => manga.id === entry.mangaId),
+                  )
+                  .map((entry) => entry.title)}
+                favoriteCount={favorites.length}
+                loading={favoriteCatalogLoading}
+                failed={favoriteCatalogFailures}
+                onOpen={(manga) => void openManga(manga)}
+                onFavorite={updateFavorite}
+                onRetry={() =>
+                  void loadFavoriteMetadata(
+                    favorites.filter(
+                      (mangaId) => !favoriteItems.some((manga) => manga.id === mangaId),
+                    ),
+                  )
+                }
+                t={t}
+              />
+            </div>
           </>
         )}
 
@@ -523,7 +619,6 @@ export function App() {
               eyebrow="CHAPTER UPDATES"
             />
             <div className="updates-stack">
-              <AppUpdaterPanel t={t} />
               <ChapterUpdatesPanel
                 history={history}
                 locale={locale}
@@ -534,6 +629,7 @@ export function App() {
                 onCheckUpdates={() => void refreshChapterUpdates()}
                 t={t}
               />
+              <AppUpdaterPanel t={t} />
             </div>
           </>
         )}
@@ -546,6 +642,14 @@ function getNavigationScreen(state: unknown): Screen | undefined {
   if (!state || typeof state !== 'object') return undefined;
   const value = Reflect.get(state, NAVIGATION_STATE_KEY);
   return value === 'library' || value === 'detail' || value === 'reader' ? value : undefined;
+}
+
+function getNavigationLibraryPage(state: unknown): LibraryPage | undefined {
+  if (!state || typeof state !== 'object') return undefined;
+  const value = Reflect.get(state, NAVIGATION_PAGE_STATE_KEY);
+  return value === 'discover' || value === 'search' || value === 'history' || value === 'updates'
+    ? value
+    : undefined;
 }
 
 interface PageHeadingProps {
@@ -576,7 +680,7 @@ interface MangaResultsProps {
   hasMore: boolean;
   favorites: number[];
   onOpen: (manga: Manga) => void;
-  onFavorite: (id: number) => void;
+  onFavorite: (manga: Manga) => void;
   onRetry: () => void;
   onLoadMore: () => void;
   t: ReturnType<typeof createTranslator>;
@@ -640,6 +744,31 @@ function MangaResults({
 
 function deduplicateManga(items: readonly Manga[]): Manga[] {
   return [...new Map(items.map((manga) => [manga.id, manga])).values()];
+}
+
+function mangaFromReadingProgress(entry: ReadingProgress): Manga {
+  return {
+    id: entry.mangaId,
+    name: entry.title,
+    slug: '',
+    authors: '',
+    transGroup: '',
+    artists: '',
+    released: 0,
+    otherName: '',
+    genres: '',
+    description: '',
+    mStatus: 0,
+    lastUpdate: '',
+    post: '',
+    cover: entry.cover,
+    lastChapter: String(entry.latestChapter),
+    views: 0,
+    submitter: 0,
+    groupUploader: 0,
+    hidden: 0,
+    magazines: '',
+  };
 }
 
 function collectMetadataSuggestions(items: readonly Manga[]): MetadataSuggestions {

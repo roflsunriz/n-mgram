@@ -69,7 +69,10 @@ export function AppUpdaterPanel({
   };
 
   return (
-    <section className="dashboard-panel standalone-panel app-updater-panel">
+    <section
+      className="dashboard-panel standalone-panel app-updater-panel"
+      data-testid="app-updater-panel"
+    >
       <div className="dashboard-heading">
         <div>
           <p className="eyebrow">APP UPDATE</p>

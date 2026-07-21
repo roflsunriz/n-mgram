@@ -11,6 +11,7 @@ const APP_HEADERS = {
 } as const;
 const APP_USER_AGENT = 'Nicomanga/5.0.0/sdk/54.0.0Nicomanga';
 const MAX_PAGE_IMAGE_BYTES = 32 * 1024 * 1024;
+const PAGE_IMAGE_REQUEST_TIMEOUT_MS = 20_000;
 const BLOCKED_IMAGE_URL_MARKERS = ['image_5f0ecf23aed2e.png'];
 const BLOCKED_IMAGE_DIGESTS = new Set([
   'c0bb95acdefac920e62af2da8d7eef91521d1782a83f80b1b7f9c04ebd3ca008',
@@ -152,7 +153,19 @@ type MangaServerSearchRequest = Omit<MangaSearchRequest, 'query' | 'genres'> & {
 export interface ResolvedPageImage {
   blocked: boolean;
   source?: string;
+  blob?: Blob;
+  byteLength?: number;
   revoke?: () => void;
+}
+
+export class PageImageError extends Error {
+  constructor(
+    message: string,
+    public readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = 'PageImageError';
+  }
 }
 
 export function createAppHeaders(nativeTransport: boolean): Record<string, string> {
@@ -308,32 +321,96 @@ export async function resolvePageImage(
 ): Promise<ResolvedPageImage> {
   if (isBlockedImageUrl(url)) return { blocked: true };
 
-  if (!isTauri()) return { blocked: false, source: url };
+  if (!isTauri()) return { blocked: false, source: url, byteLength: 0 };
 
-  const response = await tauriFetch(url, {
-    signal,
-    headers: {
-      Accept: 'image/*',
-      ...createAppHeaders(true),
-      Referer: 'https://lovehug.net',
-    },
-  });
-  if (!response.ok) throw new Error(`画像を取得できませんでした（HTTP ${response.status}）。`);
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  signal.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = window.setTimeout(() => controller.abort(), PAGE_IMAGE_REQUEST_TIMEOUT_MS);
 
-  const declaredSize = Number(response.headers.get('content-length') ?? 0);
-  if (declaredSize > MAX_PAGE_IMAGE_BYTES) throw new Error('画像サイズが上限を超えています。');
+  try {
+    const response = await tauriFetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'image/*',
+        ...createAppHeaders(true),
+        Referer: 'https://lovehug.net',
+      },
+    });
+    if (!response.ok) {
+      const retryable =
+        response.status === 408 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500;
+      throw new PageImageError(
+        `画像を取得できませんでした（HTTP ${response.status}）。`,
+        retryable,
+      );
+    }
 
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength > MAX_PAGE_IMAGE_BYTES) throw new Error('画像サイズが上限を超えています。');
-  if (isBlockedImageDigest(await sha256Hex(bytes))) return { blocked: true };
+    const declaredSize = Number(response.headers.get('content-length') ?? 0);
+    if (declaredSize > MAX_PAGE_IMAGE_BYTES) {
+      throw new PageImageError('画像サイズが上限を超えています。', false);
+    }
 
-  const mediaType = response.headers.get('content-type')?.split(';', 1)[0] ?? '';
-  if (!mediaType.startsWith('image/')) throw new Error('画像ではないデータが返されました。');
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > MAX_PAGE_IMAGE_BYTES) {
+      throw new PageImageError('画像サイズが上限を超えています。', false);
+    }
+    if (isBlockedImageDigest(await sha256Hex(bytes))) return { blocked: true };
 
-  const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
-  return {
-    blocked: false,
-    source: objectUrl,
-    revoke: () => URL.revokeObjectURL(objectUrl),
-  };
+    const mediaType = detectPageImageMediaType(
+      bytes,
+      response.headers.get('content-type')?.split(';', 1)[0],
+    );
+    if (!mediaType) throw new PageImageError('画像ではないデータが返されました。', false);
+
+    const blob = new Blob([bytes], { type: mediaType });
+    const objectUrl = URL.createObjectURL(blob);
+    return {
+      blocked: false,
+      source: objectUrl,
+      blob,
+      byteLength: bytes.byteLength,
+      revoke: () => URL.revokeObjectURL(objectUrl),
+    };
+  } catch (error: unknown) {
+    if (signal.aborted || error instanceof PageImageError) throw error;
+    if (controller.signal.aborted) {
+      throw new PageImageError('画像の取得がタイムアウトしました。', true);
+    }
+    throw new PageImageError('画像を取得できませんでした。', true);
+  } finally {
+    window.clearTimeout(timeout);
+    signal.removeEventListener('abort', abortFromCaller);
+  }
+}
+
+export function detectPageImageMediaType(
+  data: ArrayBuffer,
+  header?: string | null,
+): string | undefined {
+  if (header?.startsWith('image/')) return header;
+
+  const bytes = new Uint8Array(data, 0, Math.min(data.byteLength, 16));
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return 'image/png';
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  const signature = new TextDecoder('ascii').decode(bytes);
+  if (signature.startsWith('GIF87a') || signature.startsWith('GIF89a')) return 'image/gif';
+  if (signature.startsWith('RIFF') && signature.slice(8, 12) === 'WEBP') return 'image/webp';
+  if (signature.slice(4, 12) === 'ftypavif' || signature.slice(4, 12) === 'ftypavis') {
+    return 'image/avif';
+  }
+  return undefined;
 }

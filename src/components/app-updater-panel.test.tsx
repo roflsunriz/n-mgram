@@ -11,6 +11,7 @@ describe('AppUpdaterPanel', () => {
   it('renders the updater controls in English', () => {
     render(<AppUpdaterPanel t={createTranslator('en')} />);
     expect(screen.getByText('Application update')).toBeTruthy();
+    expect(screen.getByText('Press the button to check for the latest version.')).toBeTruthy();
     expect(screen.getByText('Check for app updates')).toBeTruthy();
   });
 

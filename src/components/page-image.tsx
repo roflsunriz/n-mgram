@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { resolvePageImage } from '../api/client';
+import { PageImageError } from '../api/client';
+import {
+  acquirePageImage,
+  invalidatePageImageCache,
+  type AcquiredPageImage,
+} from '../services/page-image-cache';
 
 interface Props {
   url: string;
@@ -7,11 +12,66 @@ interface Props {
   className: string;
   eager?: boolean;
   hidden?: boolean;
+  pageIndex?: number;
+  loadFailedLabel: string;
+  retryLabel: string;
   onBlocked: (url: string) => void;
   onVisible?: () => void;
 }
 
-const PAGE_PRELOAD_MARGIN = '3000px 0px';
+const PAGE_PRELOAD_MARGIN = '12000px 0px';
+const MAX_CONCURRENT_PAGE_LOADS = 4;
+const RETRY_DELAYS_MS = [600, 1_800];
+const MAX_DECODE_RETRIES = 1;
+
+let activePageLoads = 0;
+const queuedPageLoads: Array<() => void> = [];
+
+function drainPageLoadQueue() {
+  while (activePageLoads < MAX_CONCURRENT_PAGE_LOADS) {
+    const start = queuedPageLoads.shift();
+    if (!start) return;
+    activePageLoads += 1;
+    start();
+  }
+}
+
+function schedulePageLoad(
+  run: () => Promise<AcquiredPageImage>,
+  signal: AbortSignal,
+): Promise<AcquiredPageImage> {
+  return new Promise((resolve, reject) => {
+    queuedPageLoads.push(() => {
+      if (signal.aborted) {
+        activePageLoads -= 1;
+        drainPageLoadQueue();
+        reject(new DOMException('Image load aborted', 'AbortError'));
+        return;
+      }
+      void run()
+        .then(resolve, reject)
+        .finally(() => {
+          activePageLoads -= 1;
+          drainPageLoadQueue();
+        });
+    });
+    drainPageLoadQueue();
+  });
+}
+
+function waitForRetry(delay: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      window.clearTimeout(timeout);
+      reject(new DOMException('Image load aborted', 'AbortError'));
+    };
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delay);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 export function PageImage({
   url,
@@ -19,6 +79,9 @@ export function PageImage({
   className,
   eager = false,
   hidden = false,
+  pageIndex,
+  loadFailedLabel,
+  retryLabel,
   onBlocked,
   onVisible,
 }: Props) {
@@ -26,6 +89,12 @@ export function PageImage({
   const [loadRequested, setLoadRequested] = useState(eager);
   const [source, setSource] = useState<string>();
   const [failed, setFailed] = useState(false);
+  const [loadGeneration, setLoadGeneration] = useState(0);
+  const decodeRetriesRef = useRef(0);
+
+  useEffect(() => {
+    decodeRetriesRef.current = 0;
+  }, [url]);
 
   useEffect(() => {
     if (!eager) return;
@@ -51,30 +120,49 @@ export function PageImage({
   useEffect(() => {
     if (!loadRequested) return;
     const controller = new AbortController();
-    let revoke: (() => void) | undefined;
+    let release: (() => void) | undefined;
 
-    void resolvePageImage(url, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) {
-          result.revoke?.();
+    void (async () => {
+      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+          const result = await schedulePageLoad(
+            () => acquirePageImage(url, controller.signal),
+            controller.signal,
+          );
+          if (controller.signal.aborted) {
+            result.release();
+            return;
+          }
+          if (result.blocked) {
+            onBlocked(url);
+            return;
+          }
+          if (!result.source) throw new PageImageError('Image source is missing.', false);
+          release = result.release;
+          setSource(result.source);
           return;
+        } catch (error: unknown) {
+          if (controller.signal.aborted) return;
+          const delay = RETRY_DELAYS_MS[attempt];
+          const retryable = !(error instanceof PageImageError) || error.retryable;
+          if (!retryable || delay === undefined) {
+            setFailed(true);
+            return;
+          }
+          try {
+            await waitForRetry(delay, controller.signal);
+          } catch {
+            return;
+          }
         }
-        if (result.blocked) {
-          onBlocked(url);
-          return;
-        }
-        revoke = result.revoke;
-        setSource(result.source);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
-      });
+      }
+    })();
 
     return () => {
       controller.abort();
-      revoke?.();
+      release?.();
     };
-  }, [loadRequested, onBlocked, url]);
+  }, [loadGeneration, loadRequested, onBlocked, url]);
 
   useEffect(() => {
     if (!source || !onVisible) return;
@@ -98,6 +186,17 @@ export function PageImage({
         src={source}
         alt={alt}
         decoding="async"
+        data-page-index={pageIndex}
+        onError={() => {
+          invalidatePageImageCache(url);
+          setSource(undefined);
+          if (decodeRetriesRef.current < MAX_DECODE_RETRIES) {
+            decodeRetriesRef.current += 1;
+            setLoadGeneration((value) => value + 1);
+          } else {
+            setFailed(true);
+          }
+        }}
         hidden={hidden}
         aria-hidden={hidden || undefined}
       />
@@ -109,7 +208,30 @@ export function PageImage({
       ref={elementRef as React.RefObject<HTMLDivElement>}
       className={`${className} page-image-placeholder ${failed ? 'is-failed' : ''}`}
       hidden={hidden}
-      aria-hidden="true"
-    />
+      data-page-index={pageIndex}
+      aria-hidden={failed ? undefined : true}
+      aria-label={failed ? loadFailedLabel : undefined}
+      aria-live={failed ? 'polite' : undefined}
+    >
+      {failed && (
+        <div className="page-image-error">
+          <span>{loadFailedLabel}</span>
+          <button
+            type="button"
+            className="page-image-retry"
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              decodeRetriesRef.current = 0;
+              setFailed(false);
+              setSource(undefined);
+              setLoadGeneration((value) => value + 1);
+            }}
+          >
+            {retryLabel}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

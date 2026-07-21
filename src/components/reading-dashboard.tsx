@@ -159,7 +159,10 @@ export function ChapterUpdatesPanel({
   const updates = history.filter(hasCompleteHistoryMetadata).filter(hasNewChapter);
 
   return (
-    <section className="dashboard-panel standalone-panel notification-panel">
+    <section
+      className="dashboard-panel standalone-panel notification-panel"
+      data-testid="chapter-updates-panel"
+    >
       <div className="dashboard-heading">
         <div>
           <p className="eyebrow">CHAPTER UPDATES</p>

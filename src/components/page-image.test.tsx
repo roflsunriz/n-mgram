@@ -1,16 +1,28 @@
 // @vitest-environment jsdom
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolvePageImage } from '../api/client';
+import { PageImageError, resolvePageImage } from '../api/client';
+import { clearPageImageCache } from '../services/page-image-cache';
 import { PageImage } from './page-image';
 
-vi.mock('../api/client', () => ({
-  resolvePageImage: vi.fn(async (url: string) => ({ blocked: false, source: url })),
-}));
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    resolvePageImage: vi.fn(async (url: string) => ({ blocked: false, source: url })),
+  };
+});
 
-afterEach(() => {
+const labels = {
+  loadFailedLabel: '画像を読み込めませんでした',
+  retryLabel: '画像を再読み込み',
+};
+
+afterEach(async () => {
   cleanup();
+  await clearPageImageCache();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('PageImage preloading', () => {
@@ -34,10 +46,11 @@ describe('PageImage preloading', () => {
         className="reader-image"
         url="https://ihlv1.xyz/page.webp"
         alt="1"
+        {...labels}
         onBlocked={onBlocked}
       />,
     );
-    expect(options?.rootMargin).toBe('3000px 0px');
+    expect(options?.rootMargin).toBe('12000px 0px');
     expect(resolvePageImage).not.toHaveBeenCalled();
 
     view.rerender(
@@ -46,9 +59,85 @@ describe('PageImage preloading', () => {
         url="https://ihlv1.xyz/page.webp"
         alt="1"
         eager
+        {...labels}
         onBlocked={onBlocked}
       />,
     );
     await waitFor(() => expect(resolvePageImage).toHaveBeenCalledOnce());
+  });
+
+  it('retries transient failures automatically', async () => {
+    vi.useFakeTimers();
+    vi.mocked(resolvePageImage)
+      .mockRejectedValueOnce(new PageImageError('temporary', true))
+      .mockRejectedValueOnce(new PageImageError('temporary', true))
+      .mockResolvedValueOnce({ blocked: false, source: 'blob:loaded' });
+
+    render(
+      <PageImage
+        className="reader-image"
+        url="https://ihlv1.xyz/retry.webp"
+        alt="2"
+        eager
+        {...labels}
+        onBlocked={vi.fn()}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    expect(resolvePageImage).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('img').getAttribute('src')).toBe('blob:loaded');
+  });
+
+  it('offers manual reload after a final failure', async () => {
+    vi.mocked(resolvePageImage).mockRejectedValueOnce(new PageImageError('invalid', false));
+    render(
+      <PageImage
+        className="reader-image"
+        url="https://ihlv1.xyz/manual.webp"
+        alt="3"
+        eager
+        {...labels}
+        onBlocked={vi.fn()}
+      />,
+    );
+
+    const retry = await screen.findByRole('button', { name: labels.retryLabel });
+    vi.mocked(resolvePageImage).mockResolvedValueOnce({ blocked: false, source: 'blob:reloaded' });
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:reloaded'));
+  });
+
+  it('reuses the cached source after leaving and reopening the same page', async () => {
+    const url = 'https://ihlv1.xyz/reopen.webp';
+    const first = render(
+      <PageImage
+        className="reader-image"
+        url={url}
+        alt="4"
+        eager
+        {...labels}
+        onBlocked={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('img')).toBeTruthy());
+    first.unmount();
+
+    render(
+      <PageImage
+        className="reader-image"
+        url={url}
+        alt="4"
+        eager
+        {...labels}
+        onBlocked={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('img')).toBeTruthy());
+
+    expect(resolvePageImage).toHaveBeenCalledOnce();
   });
 });

@@ -60,6 +60,10 @@ Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
   value: vi.fn(),
   configurable: true,
 });
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  value: vi.fn(),
+  configurable: true,
+});
 
 function createStorage(): Storage {
   const values = new Map<string, string>();
@@ -116,6 +120,22 @@ describe('App library pages', () => {
 
     fireEvent.click(screen.getByTestId('library-tab-updates'));
     expect(screen.getByRole('heading', { name: '新しい章' })).toBeTruthy();
+    const updatesStack = document.querySelector('.updates-stack');
+    expect(updatesStack?.children[0]).toBe(screen.getByTestId('chapter-updates-panel'));
+    expect(updatesStack?.children[1]).toBe(screen.getByTestId('app-updater-panel'));
+  });
+
+  it('returns every non-discover library tab to Discover on browser back', () => {
+    render(<App />);
+    const discoverState = { nMgramScreen: 'library', nMgramLibraryPage: 'discover' };
+
+    for (const page of ['search', 'history', 'updates'] as const) {
+      fireEvent.click(screen.getByTestId(`library-tab-${page}`));
+      expect(window.history.state.nMgramLibraryPage).toBe(page);
+      window.history.replaceState(discoverState, '');
+      fireEvent.popState(window, { state: discoverState });
+      expect(screen.getByRole('heading', { name: '見つける' })).toBeTruthy();
+    }
   });
 
   it('opens a history entry directly at the saved chapter and lets browser back return to history', async () => {
@@ -127,8 +147,29 @@ describe('App library pages', () => {
     await waitFor(() => expect(screen.getByTestId('reader')).toBeTruthy());
     expect(screen.getByText('5 / 6')).toBeTruthy();
     expect((screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement).value).toBe('0');
+    await waitFor(() =>
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' }),
+    );
 
-    fireEvent.popState(window, { state: { nMgramScreen: 'library' } });
+    fireEvent.popState(window, {
+      state: { nMgramScreen: 'library', nMgramLibraryPage: 'history' },
+    });
     expect(screen.getByRole('heading', { name: '読んだ作品' })).toBeTruthy();
+  });
+
+  it('shows saved favorites below reading history', async () => {
+    localStorage.setItem(
+      'n-mgram.library',
+      JSON.stringify({
+        version: 3,
+        favorites: [{ mangaId: 7, title: '復元された作品' }],
+        history: {},
+      }),
+    );
+    render(<App />);
+    fireEvent.click(screen.getByTestId('library-tab-history'));
+
+    expect(screen.getByRole('heading', { name: 'お気に入り' })).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('manga-7')).toBeTruthy());
   });
 });
