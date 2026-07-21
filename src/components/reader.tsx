@@ -593,21 +593,21 @@ function ChapterEndNavigation({
       <button
         type="button"
         className="reader-chapter-button"
-        data-testid="reader-previous-chapter-footer"
-        onClick={() => onChange(chapterIndex - 1)}
-        disabled={chapterIndex === 0}
-      >
-        {t('previousChapter')}
-      </button>
-      <p>{t('chapterComplete')}</p>
-      <button
-        type="button"
-        className="reader-chapter-button"
         data-testid="reader-next-chapter-footer"
         onClick={() => onChange(chapterIndex + 1)}
         disabled={chapterIndex === chapterCount - 1}
       >
         {t('nextChapter')}
+      </button>
+      <p>{t('chapterComplete')}</p>
+      <button
+        type="button"
+        className="reader-chapter-button"
+        data-testid="reader-previous-chapter-footer"
+        onClick={() => onChange(chapterIndex - 1)}
+        disabled={chapterIndex === 0}
+      >
+        {t('previousChapter')}
       </button>
     </nav>
   );

@@ -353,6 +353,11 @@ describe('Reader', () => {
     fireEvent.click(screen.getByTestId('reader-next-chapter-header'));
     expect(chapterSelect.value).toBe('1');
 
+    const footerNavigation = document.querySelector('.reader-chapter-footer');
+    expect(footerNavigation?.children[0]).toBe(screen.getByTestId('reader-next-chapter-footer'));
+    expect(footerNavigation?.children[2]).toBe(
+      screen.getByTestId('reader-previous-chapter-footer'),
+    );
     fireEvent.click(screen.getByTestId('reader-previous-chapter-footer'));
     expect(chapterSelect.value).toBe('0');
     expect(screen.getByText('この章の最後です')).toBeTruthy();
