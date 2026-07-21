@@ -16,6 +16,10 @@ import {
 } from './reader-spread';
 
 const CONTROLS_HIDE_DELAY_MS = 2_500;
+const SWIPE_THRESHOLD_PX = 56;
+const TAP_MOVEMENT_TOLERANCE_PX = 10;
+const TAP_MAX_DURATION_MS = 500;
+const SINGLE_PAGE_QUERY = '(max-width: 620px) and (orientation: portrait)';
 
 interface Props {
   manga: Manga;
@@ -40,6 +44,7 @@ export function Reader({
   const [pageIndex, setPageIndex] = useState(initialPage);
   const [readerSettings, setReaderSettings] = useState(loadReaderSettings);
   const { mode, fit } = readerSettings;
+  const [singlePage, setSinglePage] = useState(isCompactPortrait);
   const [blockedPageUrls, setBlockedPageUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [controlsVisible, setControlsVisible] = useState(true);
   const chapter = chapters[chapterIndex];
@@ -47,6 +52,15 @@ export function Reader({
   const toolbarRef = useRef<HTMLElement>(null);
   const controlsTimerRef = useRef<number | undefined>(undefined);
   const pointerInToolbarRef = useRef(false);
+  const gestureRef = useRef<
+    | {
+        pointerId: number;
+        x: number;
+        y: number;
+        startedAt: number;
+      }
+    | undefined
+  >(undefined);
   const pageUrls = useMemo(
     () => chapter?.content.filter((url) => !blockedPageUrls.has(url)) ?? [],
     [blockedPageUrls, chapter],
@@ -85,11 +99,26 @@ export function Reader({
     scheduleControlsHide();
   }, [scheduleControlsHide]);
 
+  const toggleControls = useCallback(() => {
+    setControlsVisible((current) => {
+      if (current) cancelControlsHide();
+      else scheduleControlsHide();
+      return !current;
+    });
+  }, [cancelControlsHide, scheduleControlsHide]);
+
   const changeSpread = useCallback(
     (direction: 'next' | 'previous') => {
       if (!chapter) return;
-      const nextPage =
-        direction === 'next'
+      const nextPage = singlePage
+        ? direction === 'next'
+          ? activePageIndex + 1 < pageUrls.length
+            ? activePageIndex + 1
+            : undefined
+          : activePageIndex > 0
+            ? activePageIndex - 1
+            : undefined
+        : direction === 'next'
           ? getNextSpreadStart(activePageIndex, pageUrls.length)
           : getPreviousSpreadStart(activePageIndex, pageUrls.length);
 
@@ -103,11 +132,30 @@ export function Reader({
         const previousPageCount =
           previous?.content.filter((url) => !blockedPageUrls.has(url)).length ?? 0;
         setChapterIndex((value) => value - 1);
-        setPageIndex(getLastSpreadStart(previousPageCount));
+        setPageIndex(
+          singlePage ? Math.max(0, previousPageCount - 1) : getLastSpreadStart(previousPageCount),
+        );
       }
     },
-    [activePageIndex, blockedPageUrls, chapter, chapterIndex, chapters, pageUrls.length],
+    [
+      activePageIndex,
+      blockedPageUrls,
+      chapter,
+      chapterIndex,
+      chapters,
+      pageUrls.length,
+      singlePage,
+    ],
   );
+
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const media = window.matchMedia(SINGLE_PAGE_QUERY);
+    const updateLayout = () => setSinglePage(media.matches);
+    updateLayout();
+    media.addEventListener?.('change', updateLayout);
+    return () => media.removeEventListener?.('change', updateLayout);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -139,7 +187,9 @@ export function Reader({
 
   if (!chapter) return null;
 
-  const spread = getReaderSpread(activePageIndex, pageUrls.length);
+  const spread = singlePage
+    ? { start: activePageIndex, end: activePageIndex, right: activePageIndex, left: undefined }
+    : getReaderSpread(activePageIndex, pageUrls.length);
   const pageLabel =
     pageUrls.length === 0
       ? '–'
@@ -156,8 +206,9 @@ export function Reader({
     <div
       className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'}`}
       data-testid="reader"
-      onPointerMove={revealControls}
-      onPointerDown={revealControls}
+      onPointerMove={(event) => {
+        if (event.pointerType === 'mouse') revealControls();
+      }}
       onFocusCapture={revealControls}
       onBlurCapture={scheduleControlsHide}
     >
@@ -234,7 +285,53 @@ export function Reader({
           })}
         </span>
       </header>
-      <div ref={scrollRef} className={`reader-stage mode-${mode} fit-${fit}`}>
+      <div
+        ref={scrollRef}
+        className={`reader-stage mode-${mode} fit-${fit}`}
+        onPointerDown={(event) => {
+          if (event.isPrimary === false) return;
+          gestureRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            startedAt: performance.now(),
+          };
+        }}
+        onPointerCancel={() => {
+          gestureRef.current = undefined;
+        }}
+        onPointerUp={(event) => {
+          const gesture = gestureRef.current;
+          gestureRef.current = undefined;
+          if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+          const dx = event.clientX - gesture.x;
+          const dy = event.clientY - gesture.y;
+          const distance = Math.hypot(dx, dy);
+          const elapsed = performance.now() - gesture.startedAt;
+
+          if (
+            mode === 'paged' &&
+            Math.abs(dx) >= SWIPE_THRESHOLD_PX &&
+            Math.abs(dx) > Math.abs(dy) * 1.2
+          ) {
+            changeSpread(dx < 0 ? 'next' : 'previous');
+            return;
+          }
+
+          if (distance > TAP_MOVEMENT_TOLERANCE_PX || elapsed > TAP_MAX_DURATION_MS) return;
+          if (mode !== 'paged') {
+            toggleControls();
+            return;
+          }
+
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const relativeX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
+          if (relativeX < 0.32) changeSpread('next');
+          else if (relativeX > 0.68) changeSpread('previous');
+          else toggleControls();
+        }}
+      >
         {mode === 'continuous' ? (
           pageUrls.map((src, index) => (
             <ReaderImage
@@ -246,7 +343,9 @@ export function Reader({
             />
           ))
         ) : (
-          <div className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''}`}>
+          <div
+            className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''} ${singlePage ? 'is-single-page' : ''}`}
+          >
             {leftPageUrl && (
               <PageImage
                 key={leftPageUrl}
@@ -301,6 +400,10 @@ export function Reader({
       </div>
     </div>
   );
+}
+
+function isCompactPortrait() {
+  return window.matchMedia?.(SINGLE_PAGE_QUERY).matches ?? false;
 }
 
 function ReaderImage({

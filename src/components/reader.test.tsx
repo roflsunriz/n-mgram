@@ -145,8 +145,63 @@ describe('Reader', () => {
     act(() => vi.advanceTimersByTime(2_500));
     expect(reader.classList.contains('controls-hidden')).toBe(true);
 
-    fireEvent.pointerMove(reader);
+    fireEvent.pointerMove(reader, { pointerType: 'mouse' });
     expect(reader.classList.contains('controls-visible')).toBe(true);
+  });
+
+  it('uses one page in compact portrait and advances with a left swipe', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    });
+
+    try {
+      render(
+        <Reader
+          manga={manga}
+          chapters={chapters}
+          initialChapter={0}
+          initialPage={0}
+          onClose={vi.fn()}
+          onProgress={vi.fn()}
+          t={createTranslator('ja')}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('reader-mode-paged'));
+      expect(document.querySelector('.reader-spread')?.classList.contains('is-single-page')).toBe(
+        true,
+      );
+      expect(screen.getByText('1 / 3')).toBeTruthy();
+
+      const stage = document.querySelector('.reader-stage');
+      expect(stage).toBeTruthy();
+      fireEvent.pointerDown(stage!, {
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 240,
+        clientY: 100,
+      });
+      fireEvent.pointerUp(stage!, {
+        pointerId: 1,
+        isPrimary: true,
+        clientX: 120,
+        clientY: 100,
+      });
+
+      expect(screen.getByText('2 / 3')).toBeTruthy();
+      await waitFor(() => expect(screen.getByRole('img', { name: '2' })).toBeTruthy());
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
   });
 
   it('restores the selected reader mode and fit across reader sessions', async () => {

@@ -31,6 +31,7 @@ describe('AppUpdaterPanel', () => {
       version: '0.2.0',
       currentVersion: '0.1.0',
       body: '更新内容',
+      installKind: 'desktop',
       downloadAndInstall,
     };
     render(
@@ -45,5 +46,30 @@ describe('AppUpdaterPanel', () => {
     fireEvent.click(screen.getByTestId('install-app-update'));
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
     expect(relaunch).toHaveBeenCalledOnce();
+  });
+
+  it('opens an Android APK without relaunching the current process', async () => {
+    const downloadAndInstall = vi.fn(async () => undefined);
+    const relaunch = vi.fn(async () => undefined);
+    const update: AvailableAppUpdate = {
+      version: '0.2.0',
+      currentVersion: '0.1.0',
+      installKind: 'android-download',
+      downloadAndInstall,
+    };
+    render(
+      <AppUpdaterPanel
+        t={createTranslator('ja')}
+        checkUpdate={vi.fn(async () => update)}
+        relaunch={relaunch}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('check-app-update'));
+    await waitFor(() => expect(screen.getByText('APKをダウンロード')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('install-app-update'));
+    await waitFor(() => expect(downloadAndInstall).toHaveBeenCalledOnce());
+    expect(relaunch).not.toHaveBeenCalled();
+    expect(screen.getByText(/ブラウザでAPKを開きました/)).toBeTruthy();
   });
 });

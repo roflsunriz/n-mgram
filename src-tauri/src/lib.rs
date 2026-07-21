@@ -2,10 +2,11 @@
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(desktop)]
-            app.handle()
+            _app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             Ok(())
         })

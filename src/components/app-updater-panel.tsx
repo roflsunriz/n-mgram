@@ -14,7 +14,8 @@ interface Props {
   relaunch?: () => Promise<void>;
 }
 
-type UpdateState = 'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'error';
+type UpdateState =
+  'idle' | 'checking' | 'available' | 'current' | 'downloading' | 'external' | 'error';
 
 export function AppUpdaterPanel({
   t,
@@ -51,6 +52,11 @@ export function AppUpdaterPanel({
     setError(undefined);
     setProgress(0);
     try {
+      if (update.installKind === 'android-download') {
+        await update.downloadAndInstall(() => undefined);
+        setState('external');
+        return;
+      }
       await update.downloadAndInstall(({ downloaded, contentLength }) => {
         if (contentLength && contentLength > 0)
           setProgress(Math.min(100, Math.round((downloaded / contentLength) * 100)));
@@ -86,6 +92,11 @@ export function AppUpdaterPanel({
         </div>
       )}
       {state === 'current' && <p className="app-update-result">{t('appUpToDate')}</p>}
+      {state === 'external' && (
+        <p className="app-update-result" role="status">
+          {t('androidUpdateOpened')}
+        </p>
+      )}
       {state === 'error' && error && (
         <p className="update-check-error app-update-error" role="alert">
           {t('appUpdateFailed', { error })}
@@ -101,7 +112,9 @@ export function AppUpdaterPanel({
       <div className="app-update-actions">
         {state === 'available' ? (
           <button type="button" data-testid="install-app-update" onClick={() => void install()}>
-            {t('installAndRestart')}
+            {update?.installKind === 'android-download'
+              ? t('downloadAndroidUpdate')
+              : t('installAndRestart')}
           </button>
         ) : (
           <button

@@ -335,7 +335,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell page-${libraryPage}`}>
       <header className="topbar">
         <button className="brand" type="button" onClick={() => setLibraryPage('discover')}>
           <span className="brand-mark">
