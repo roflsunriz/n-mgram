@@ -1172,6 +1172,9 @@ p {
 .reader-shell.controls-hidden {
   cursor: none;
 }
+.reader-shell.is-zoomed.controls-hidden {
+  cursor: default;
+}
 .reader-toolbar {
   position: absolute;
   z-index: 5;
@@ -1224,6 +1227,37 @@ p {
   align-items: center;
   gap: 9px;
 }
+.reader-zoom-controls {
+  display: inline-flex;
+  flex: none;
+  height: 38px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 9px;
+}
+.reader-zoom-controls button {
+  min-width: 36px;
+  padding: 0 9px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+.reader-zoom-controls button:nth-child(2) {
+  min-width: 62px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.reader-zoom-controls button:last-child {
+  border-right: 0;
+}
+.reader-zoom-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .reader-chapter-selector {
   display: flex;
   align-items: center;
@@ -1272,17 +1306,29 @@ p {
   inset: 66px 0 0;
   overflow: auto;
   scrollbar-color: #444 #111;
+  touch-action: pan-y;
   transition: top 220ms ease;
+}
+.reader-stage.is-zoomed {
+  touch-action: pan-x pan-y;
+}
+.reader-zoom-surface {
+  width: 100%;
+  min-height: 100%;
+  transform: scale(var(--reader-zoom, 1));
+  transform-origin: top left;
 }
 .controls-hidden .reader-stage {
   top: 0;
 }
 .mode-continuous {
+  padding: 22px 18px 80px;
+}
+.mode-continuous .reader-zoom-surface {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 22px 18px 80px;
 }
 .reader-image {
   display: block;
@@ -1369,6 +1415,11 @@ p {
   justify-content: center;
   padding: 18px 80px 42px;
 }
+.mode-paged .reader-zoom-surface {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .reader-spread {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1439,6 +1490,11 @@ p {
 }
 .page-turn:disabled {
   opacity: 0.2;
+}
+.reader-shell.is-zoomed .page-turn,
+.reader-shell.is-zoomed .reader-chapter-footer-paged {
+  opacity: 0;
+  pointer-events: none;
 }
 .page-turn-left {
   left: 14px;
@@ -1758,6 +1814,9 @@ p {
   }
   .reader-controls .segmented {
     flex: none;
+  }
+  .reader-zoom-controls {
+    height: 44px;
   }
   .reader-controls .segmented button {
     min-height: 44px;

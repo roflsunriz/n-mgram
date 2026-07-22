@@ -292,6 +292,130 @@ describe('Reader', () => {
     }
   });
 
+  it('pinch-zooms around touch pointers without turning the page', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    const stage = document.querySelector('.reader-stage')!;
+    const surface = screen.getByTestId('reader-zoom-surface');
+
+    fireEvent.pointerDown(stage, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 100,
+      clientY: 200,
+    });
+    fireEvent.pointerDown(stage, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: false,
+      clientX: 200,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(stage, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 300,
+      clientY: 200,
+    });
+
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('2');
+    expect(screen.getByTestId('reader-zoom-reset').textContent).toBe('200%');
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+
+    fireEvent.pointerUp(stage, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 200 });
+    fireEvent.pointerUp(stage, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200 });
+  });
+
+  it('double-taps to zoom in and double-taps again to return to 100%', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    const stage = document.querySelector('.reader-stage')!;
+    const tap = (pointerId: number) => {
+      fireEvent.pointerDown(stage, {
+        pointerId,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: 80,
+        clientY: 180,
+      });
+      fireEvent.pointerUp(stage, {
+        pointerId,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: 80,
+        clientY: 180,
+      });
+    };
+
+    tap(1);
+    tap(2);
+    expect(screen.getByTestId('reader-zoom-surface').style.getPropertyValue('--reader-zoom')).toBe(
+      '2.5',
+    );
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+
+    tap(3);
+    tap(4);
+    expect(screen.getByTestId('reader-zoom-surface').style.getPropertyValue('--reader-zoom')).toBe(
+      '1',
+    );
+  });
+
+  it('supports Windows-friendly zoom buttons and Ctrl-wheel trackpad zoom', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    const surface = screen.getByTestId('reader-zoom-surface');
+    const stage = document.querySelector('.reader-stage')!;
+
+    fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
+    expect(screen.getByTestId('reader-zoom-reset').textContent).toBe('150%');
+
+    fireEvent.wheel(stage, { ctrlKey: true, deltaY: -100, clientX: 240, clientY: 200 });
+    expect(Number(surface.style.getPropertyValue('--reader-zoom'))).toBeGreaterThan(1.5);
+
+    fireEvent.click(screen.getByTestId('reader-zoom-reset'));
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+
+    fireEvent.keyDown(window, { key: '+', ctrlKey: true });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
+    fireEvent.keyDown(window, { key: '-', ctrlKey: true });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+    fireEvent.keyDown(window, { key: '0', ctrlKey: true });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+  });
+
   it('restores the selected reader mode and fit across reader sessions', async () => {
     const firstSession = render(
       <Reader

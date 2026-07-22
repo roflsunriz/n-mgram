@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Chapter, Manga } from '../api/client';
 import type { MessageKey } from '../i18n';
@@ -21,7 +21,25 @@ const CONTROLS_HIDE_DELAY_MS = 2_500;
 const SWIPE_THRESHOLD_PX = 56;
 const TAP_MOVEMENT_TOLERANCE_PX = 10;
 const TAP_MAX_DURATION_MS = 500;
+const DOUBLE_TAP_DELAY_MS = 280;
+const DOUBLE_TAP_DISTANCE_PX = 36;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const DOUBLE_TAP_ZOOM = 2.5;
+const ZOOM_STEP = 0.5;
 const SINGLE_PAGE_QUERY = '(max-width: 620px) and (orientation: portrait)';
+
+interface PointerPosition {
+  x: number;
+  y: number;
+}
+
+interface PinchGesture {
+  startDistance: number;
+  startZoom: number;
+  anchorContentX: number;
+  anchorContentY: number;
+}
 
 interface Props {
   manga: Manga;
@@ -50,6 +68,7 @@ export function Reader({
   const [blockedPageUrls, setBlockedPageUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(MIN_ZOOM);
   const windowsFullscreenAvailable = isWindowsTauriApp();
   const chapter = chapters[chapterIndex];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -58,9 +77,24 @@ export function Reader({
   const controlsTimerRef = useRef<number | undefined>(undefined);
   const pointerInToolbarRef = useRef(false);
   const fullscreenRef = useRef(false);
+  const zoomRef = useRef(MIN_ZOOM);
+  const zoomScrollFrameRef = useRef<number | undefined>(undefined);
+  const activePointersRef = useRef(new Map<number, PointerPosition>());
+  const pinchRef = useRef<PinchGesture | undefined>(undefined);
+  const suppressTapRef = useRef(false);
+  const lastTapRef = useRef<{ at: number; x: number; y: number } | undefined>(undefined);
+  const pendingTapRef = useRef<
+    | {
+        timer: number;
+        x: number;
+        y: number;
+      }
+    | undefined
+  >(undefined);
   const gestureRef = useRef<
     | {
         pointerId: number;
+        pointerType: string;
         x: number;
         y: number;
         startedAt: number;
@@ -113,6 +147,52 @@ export function Reader({
     });
   }, [cancelControlsHide, scheduleControlsHide]);
 
+  const queueStageScroll = useCallback((left: number, top: number) => {
+    if (zoomScrollFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(zoomScrollFrameRef.current);
+    }
+    zoomScrollFrameRef.current = window.requestAnimationFrame(() => {
+      zoomScrollFrameRef.current = undefined;
+      scrollRef.current?.scrollTo({
+        left: Math.max(0, left),
+        top: Math.max(0, top),
+      });
+    });
+  }, []);
+
+  const setZoomAt = useCallback(
+    (requestedZoom: number, clientX?: number, clientY?: number) => {
+      const nextZoom = clampZoom(requestedZoom);
+      const previousZoom = zoomRef.current;
+      if (Math.abs(nextZoom - previousZoom) < 0.001) return;
+
+      const stage = scrollRef.current;
+      zoomRef.current = nextZoom;
+      setZoom(nextZoom);
+      if (!stage) return;
+
+      const bounds = stage.getBoundingClientRect();
+      const focalX = (clientX ?? bounds.left + bounds.width / 2) - bounds.left;
+      const focalY = (clientY ?? bounds.top + bounds.height / 2) - bounds.top;
+      const contentX = (stage.scrollLeft + focalX) / previousZoom;
+      const contentY = (stage.scrollTop + focalY) / previousZoom;
+      queueStageScroll(contentX * nextZoom - focalX, contentY * nextZoom - focalY);
+    },
+    [queueStageScroll],
+  );
+
+  const resetZoom = useCallback(() => setZoomAt(MIN_ZOOM), [setZoomAt]);
+
+  const resetZoomForLayout = useCallback(() => {
+    if (zoomScrollFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(zoomScrollFrameRef.current);
+      zoomScrollFrameRef.current = undefined;
+    }
+    zoomRef.current = MIN_ZOOM;
+    setZoom(MIN_ZOOM);
+    scrollRef.current?.scrollTo({ left: 0, top: 0 });
+  }, []);
+
   const changeSpread = useCallback(
     (direction: 'next' | 'previous') => {
       if (!chapter) return;
@@ -131,12 +211,14 @@ export function Reader({
       if (nextPage !== undefined) {
         setPageIndex(nextPage);
       } else if (direction === 'next' && chapterIndex < chapters.length - 1) {
+        resetZoomForLayout();
         setChapterIndex((value) => value + 1);
         setPageIndex(0);
       } else if (direction === 'previous' && chapterIndex > 0) {
         const previous = chapters[chapterIndex - 1];
         const previousPageCount =
           previous?.content.filter((url) => !blockedPageUrls.has(url)).length ?? 0;
+        resetZoomForLayout();
         setChapterIndex((value) => value - 1);
         setPageIndex(
           singlePage ? Math.max(0, previousPageCount - 1) : getLastSpreadStart(previousPageCount),
@@ -150,8 +232,68 @@ export function Reader({
       chapterIndex,
       chapters,
       pageUrls.length,
+      resetZoomForLayout,
       singlePage,
     ],
+  );
+
+  const runStageTap = useCallback(
+    (clientX: number) => {
+      if (mode !== 'paged' || zoomRef.current > MIN_ZOOM + 0.01) {
+        toggleControls();
+        return;
+      }
+      const bounds = scrollRef.current?.getBoundingClientRect();
+      const relativeX = bounds && bounds.width > 0 ? (clientX - bounds.left) / bounds.width : 0.5;
+      if (relativeX < 0.32) changeSpread('next');
+      else if (relativeX > 0.68) changeSpread('previous');
+      else toggleControls();
+    },
+    [changeSpread, mode, toggleControls],
+  );
+
+  const clearPendingTap = useCallback(() => {
+    const pending = pendingTapRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingTapRef.current = undefined;
+  }, []);
+
+  const commitPendingTap = useCallback(() => {
+    const pending = pendingTapRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingTapRef.current = undefined;
+    lastTapRef.current = undefined;
+    runStageTap(pending.x);
+  }, [runStageTap]);
+
+  const handleTouchTap = useCallback(
+    (clientX: number, clientY: number) => {
+      const now = performance.now();
+      const previous = lastTapRef.current;
+      if (
+        previous &&
+        now - previous.at <= DOUBLE_TAP_DELAY_MS &&
+        Math.hypot(clientX - previous.x, clientY - previous.y) <= DOUBLE_TAP_DISTANCE_PX
+      ) {
+        clearPendingTap();
+        lastTapRef.current = undefined;
+        setZoomAt(zoomRef.current > MIN_ZOOM + 0.01 ? MIN_ZOOM : DOUBLE_TAP_ZOOM, clientX, clientY);
+        return;
+      }
+
+      if (previous) commitPendingTap();
+      lastTapRef.current = { at: now, x: clientX, y: clientY };
+      const timer = window.setTimeout(() => {
+        const pending = pendingTapRef.current;
+        pendingTapRef.current = undefined;
+        lastTapRef.current = undefined;
+        if (pending) runStageTap(pending.x);
+      }, DOUBLE_TAP_DELAY_MS);
+      pendingTapRef.current = { timer, x: clientX, y: clientY };
+    },
+    [clearPendingTap, commitPendingTap, runStageTap, setZoomAt],
   );
 
   const changeFullscreen = useCallback(
@@ -212,17 +354,46 @@ export function Reader({
         else onClose();
         return;
       }
+      if (event.ctrlKey && (event.key === '+' || event.key === '=' || event.key === 'Add')) {
+        event.preventDefault();
+        setZoomAt(zoomRef.current + ZOOM_STEP);
+        return;
+      }
+      if (event.ctrlKey && (event.key === '-' || event.key === 'Subtract')) {
+        event.preventDefault();
+        setZoomAt(zoomRef.current - ZOOM_STEP);
+        return;
+      }
+      if (event.ctrlKey && event.key === '0') {
+        event.preventDefault();
+        resetZoom();
+        return;
+      }
       if (mode === 'paged' && event.key === 'ArrowLeft') changeSpread('next');
       if (mode === 'paged' && event.key === 'ArrowRight') changeSpread('previous');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [changeFullscreen, changeSpread, mode, onClose, windowsFullscreenAvailable]);
+  }, [
+    changeFullscreen,
+    changeSpread,
+    mode,
+    onClose,
+    resetZoom,
+    setZoomAt,
+    windowsFullscreenAvailable,
+  ]);
 
   useEffect(() => {
     scheduleControlsHide();
-    return cancelControlsHide;
-  }, [cancelControlsHide, scheduleControlsHide]);
+    return () => {
+      cancelControlsHide();
+      clearPendingTap();
+      if (zoomScrollFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(zoomScrollFrameRef.current);
+      }
+    };
+  }, [cancelControlsHide, clearPendingTap, scheduleControlsHide]);
 
   useEffect(() => {
     saveReaderSettings(readerSettings);
@@ -269,6 +440,7 @@ export function Reader({
         ? String(spread.start + 1)
         : `${spread.start + 1}–${spread.end + 1}`;
   const changeChapter = (next: number) => {
+    resetZoomForLayout();
     setChapterIndex(next);
     setPageIndex(0);
   };
@@ -279,7 +451,7 @@ export function Reader({
       : getNextSpreadStart(activePageIndex, pageUrls.length) === undefined);
   return (
     <div
-      className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'}`}
+      className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'} ${zoom > MIN_ZOOM ? 'is-zoomed' : ''}`}
       data-testid="reader"
       onPointerMove={(event) => {
         if (event.pointerType === 'mouse') revealControls();
@@ -349,14 +521,20 @@ export function Reader({
             <button
               className={mode === 'continuous' ? 'active' : ''}
               data-testid="reader-mode-continuous"
-              onClick={() => setReaderSettings((current) => ({ ...current, mode: 'continuous' }))}
+              onClick={() => {
+                resetZoomForLayout();
+                setReaderSettings((current) => ({ ...current, mode: 'continuous' }));
+              }}
             >
               {t('continuous')}
             </button>
             <button
               className={mode === 'paged' ? 'active' : ''}
               data-testid="reader-mode-paged"
-              onClick={() => setReaderSettings((current) => ({ ...current, mode: 'paged' }))}
+              onClick={() => {
+                resetZoomForLayout();
+                setReaderSettings((current) => ({ ...current, mode: 'paged' }));
+              }}
             >
               {t('paged')}
             </button>
@@ -364,18 +542,49 @@ export function Reader({
           <select
             value={fit}
             data-testid="reader-fit"
-            onChange={(event) =>
+            onChange={(event) => {
+              resetZoomForLayout();
               setReaderSettings((current) => ({
                 ...current,
                 fit: event.target.value as ReaderFitMode,
-              }))
-            }
+              }));
+            }}
             aria-label={t('fitWidth')}
           >
             <option value="width">{t('fitWidth')}</option>
             <option value="height">{t('fitHeight')}</option>
             <option value="original">{t('original')}</option>
           </select>
+          <div className="reader-zoom-controls" aria-label={t('zoom')}>
+            <button
+              type="button"
+              onClick={() => setZoomAt(zoomRef.current - ZOOM_STEP)}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label={t('zoomOut')}
+              title={t('zoomOut')}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              data-testid="reader-zoom-reset"
+              onClick={resetZoom}
+              disabled={zoom <= MIN_ZOOM}
+              aria-label={t('resetZoom')}
+              title={t('resetZoom')}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoomAt(zoomRef.current + ZOOM_STEP)}
+              disabled={zoom >= MAX_ZOOM}
+              aria-label={t('zoomIn')}
+              title={t('zoomIn')}
+            >
+              ＋
+            </button>
+          </div>
         </div>
         <div className="reader-toolbar-actions">
           <span className="reader-page-status">
@@ -400,20 +609,87 @@ export function Reader({
       </header>
       <div
         ref={scrollRef}
-        className={`reader-stage mode-${mode} fit-${fit}`}
+        className={`reader-stage mode-${mode} fit-${fit} ${zoom > MIN_ZOOM ? 'is-zoomed' : ''}`}
+        onWheel={(event) => {
+          if (!event.ctrlKey) return;
+          event.preventDefault();
+          setZoomAt(
+            zoomRef.current * Math.exp(-event.deltaY * 0.0025),
+            event.clientX,
+            event.clientY,
+          );
+        }}
         onPointerDown={(event) => {
-          if (event.isPrimary === false) return;
+          const touchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
+          if (touchLike) {
+            activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            if (activePointersRef.current.size >= 2) {
+              clearPendingTap();
+              lastTapRef.current = undefined;
+              const [first, second] = [...activePointersRef.current.values()];
+              if (first && second) {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                const centerX = (first.x + second.x) / 2 - bounds.left;
+                const centerY = (first.y + second.y) / 2 - bounds.top;
+                pinchRef.current = {
+                  startDistance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+                  startZoom: zoomRef.current,
+                  anchorContentX: (event.currentTarget.scrollLeft + centerX) / zoomRef.current,
+                  anchorContentY: (event.currentTarget.scrollTop + centerY) / zoomRef.current,
+                };
+                suppressTapRef.current = true;
+                gestureRef.current = undefined;
+              }
+              return;
+            }
+          } else if (event.isPrimary === false) {
+            return;
+          }
           gestureRef.current = {
             pointerId: event.pointerId,
+            pointerType: event.pointerType,
             x: event.clientX,
             y: event.clientY,
             startedAt: performance.now(),
           };
         }}
-        onPointerCancel={() => {
+        onPointerMove={(event) => {
+          if (!activePointersRef.current.has(event.pointerId)) return;
+          activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          const pinch = pinchRef.current;
+          if (!pinch || activePointersRef.current.size < 2) return;
+          event.preventDefault();
+          const [first, second] = [...activePointersRef.current.values()];
+          if (!first || !second) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const centerX = (first.x + second.x) / 2 - bounds.left;
+          const centerY = (first.y + second.y) / 2 - bounds.top;
+          const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+          const nextZoom = clampZoom(pinch.startZoom * (distance / pinch.startDistance));
+          zoomRef.current = nextZoom;
+          setZoom(nextZoom);
+          queueStageScroll(
+            pinch.anchorContentX * nextZoom - centerX,
+            pinch.anchorContentY * nextZoom - centerY,
+          );
+        }}
+        onPointerCancel={(event) => {
+          activePointersRef.current.delete(event.pointerId);
+          pinchRef.current = undefined;
+          suppressTapRef.current = activePointersRef.current.size > 0;
           gestureRef.current = undefined;
         }}
         onPointerUp={(event) => {
+          const touchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
+          const wasPinching = Boolean(pinchRef.current) || suppressTapRef.current;
+          if (touchLike) activePointersRef.current.delete(event.pointerId);
+          if (wasPinching) {
+            if (activePointersRef.current.size < 2) pinchRef.current = undefined;
+            if (activePointersRef.current.size === 0) suppressTapRef.current = false;
+            gestureRef.current = undefined;
+            return;
+          }
           const gesture = gestureRef.current;
           gestureRef.current = undefined;
           if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -425,6 +701,7 @@ export function Reader({
 
           if (
             mode === 'paged' &&
+            zoomRef.current <= MIN_ZOOM + 0.01 &&
             Math.abs(dx) >= SWIPE_THRESHOLD_PX &&
             Math.abs(dx) > Math.abs(dy) * 1.2
           ) {
@@ -433,72 +710,73 @@ export function Reader({
           }
 
           if (distance > TAP_MOVEMENT_TOLERANCE_PX || elapsed > TAP_MAX_DURATION_MS) return;
-          if (mode !== 'paged') {
-            toggleControls();
-            return;
+          if (gesture.pointerType === 'touch' || gesture.pointerType === 'pen') {
+            handleTouchTap(event.clientX, event.clientY);
+          } else {
+            runStageTap(event.clientX);
           }
-
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const relativeX = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0.5;
-          if (relativeX < 0.32) changeSpread('next');
-          else if (relativeX > 0.68) changeSpread('previous');
-          else toggleControls();
         }}
       >
-        {mode === 'continuous' ? (
-          <>
-            {pageUrls.map((src, index) => (
-              <ReaderImage
-                key={`${src}-${index}`}
-                src={src}
-                index={index}
-                onVisible={setPageIndex}
-                onBlocked={markPageBlocked}
-                loadFailedLabel={t('imageLoadFailed')}
-                retryLabel={t('reloadImage')}
-                eager={index < 10 || Math.abs(index - activePageIndex) <= 8}
-              />
-            ))}
-            <ChapterEndNavigation
-              chapterIndex={chapterIndex}
-              chapterCount={chapters.length}
-              onChange={changeChapter}
-              t={t}
-            />
-          </>
-        ) : (
-          <div
-            className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''} ${singlePage ? 'is-single-page' : ''}`}
-          >
-            {pageUrls.map((url, index) => {
-              const isLeft = spread.left === index;
-              const isRight = spread.right === index;
-              const isVisible = isLeft || isRight;
-              const nearCurrentSpread =
-                index >= Math.max(0, spread.start - 2) && index <= spread.end + 4;
-              return (
-                <PageImage
-                  key={`${url}-${index}`}
-                  className={`reader-image paged-image ${
-                    isLeft
-                      ? 'spread-page-left'
-                      : isRight
-                        ? 'spread-page-right'
-                        : 'paged-image-prefetch'
-                  }`}
-                  url={url}
-                  alt={`${index + 1}`}
-                  pageIndex={index}
-                  eager={nearCurrentSpread}
-                  hidden={!isVisible}
+        <div
+          className="reader-zoom-surface"
+          data-testid="reader-zoom-surface"
+          style={{ '--reader-zoom': zoom } as CSSProperties}
+        >
+          {mode === 'continuous' ? (
+            <>
+              {pageUrls.map((src, index) => (
+                <ReaderImage
+                  key={`${src}-${index}`}
+                  src={src}
+                  index={index}
+                  onVisible={setPageIndex}
+                  onBlocked={markPageBlocked}
                   loadFailedLabel={t('imageLoadFailed')}
                   retryLabel={t('reloadImage')}
-                  onBlocked={markPageBlocked}
+                  eager={index < 10 || Math.abs(index - activePageIndex) <= 8}
                 />
-              );
-            })}
-          </div>
-        )}
+              ))}
+              <ChapterEndNavigation
+                chapterIndex={chapterIndex}
+                chapterCount={chapters.length}
+                onChange={changeChapter}
+                t={t}
+              />
+            </>
+          ) : (
+            <div
+              className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''} ${singlePage ? 'is-single-page' : ''}`}
+            >
+              {pageUrls.map((url, index) => {
+                const isLeft = spread.left === index;
+                const isRight = spread.right === index;
+                const isVisible = isLeft || isRight;
+                const nearCurrentSpread =
+                  index >= Math.max(0, spread.start - 2) && index <= spread.end + 4;
+                return (
+                  <PageImage
+                    key={`${url}-${index}`}
+                    className={`reader-image paged-image ${
+                      isLeft
+                        ? 'spread-page-left'
+                        : isRight
+                          ? 'spread-page-right'
+                          : 'paged-image-prefetch'
+                    }`}
+                    url={url}
+                    alt={`${index + 1}`}
+                    pageIndex={index}
+                    eager={nearCurrentSpread}
+                    hidden={!isVisible}
+                    loadFailedLabel={t('imageLoadFailed')}
+                    retryLabel={t('reloadImage')}
+                    onBlocked={markPageBlocked}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       {mode === 'paged' && (
         <>
@@ -540,6 +818,10 @@ export function Reader({
       </div>
     </div>
   );
+}
+
+function clampZoom(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 }
 
 function isCompactPortrait() {
