@@ -198,13 +198,17 @@ describe('Reader', () => {
       />,
     );
     const reader = screen.getByTestId('reader');
+    const stage = document.querySelector('.reader-stage') as HTMLDivElement;
     expect(reader.classList.contains('controls-visible')).toBe(true);
+    expect(stage.style.top).toBe('0px');
 
     act(() => vi.advanceTimersByTime(2_500));
     expect(reader.classList.contains('controls-hidden')).toBe(true);
+    expect(stage.style.top).toBe('0px');
 
     fireEvent.pointerMove(reader, { pointerType: 'mouse' });
     expect(reader.classList.contains('controls-visible')).toBe(true);
+    expect(stage.style.top).toBe('0px');
   });
 
   it('keeps hidden controls suppressed while turning pages', () => {

@@ -623,6 +623,7 @@ export function Reader({
       <div
         ref={scrollRef}
         className={`reader-stage mode-${mode} fit-${fit} ${zoom > MIN_ZOOM ? 'is-zoomed' : ''}`}
+        style={{ top: 0 }}
         onWheel={(event) => {
           if (!event.ctrlKey) return;
           event.preventDefault();

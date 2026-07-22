@@ -1303,12 +1303,11 @@ p {
 }
 .reader-stage {
   position: absolute;
-  inset: 66px 0 0;
+  inset: 0;
   overflow: auto;
   scrollbar-color: #444 #111;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  transition: top 220ms ease;
 }
 .reader-stage.is-zoomed {
   cursor: grab;
@@ -1326,9 +1325,6 @@ p {
   min-height: 100%;
   transform: scale(var(--reader-zoom, 1));
   transform-origin: top left;
-}
-.controls-hidden .reader-stage {
-  top: 0;
 }
 .mode-continuous {
   padding: 22px 18px 80px;
@@ -1407,11 +1403,8 @@ p {
 .mode-continuous.fit-height .reader-image {
   width: auto;
   max-width: 100%;
-  height: calc(100vh - 110px);
-  object-fit: contain;
-}
-.controls-hidden .mode-continuous.fit-height .reader-image {
   height: calc(100vh - 30px);
+  object-fit: contain;
 }
 .mode-continuous.fit-original .reader-image {
   max-width: none;
@@ -1465,14 +1458,11 @@ p {
 .mode-paged.fit-height .paged-image {
   width: auto;
   max-width: calc((100vw - 170px) / 2);
-  max-height: calc(100vh - 126px);
+  max-height: calc(100vh - 48px);
   height: auto;
 }
-.controls-hidden .mode-paged.fit-height .paged-image {
-  max-height: calc(100vh - 48px);
-}
 .mode-paged.fit-height .page-image-placeholder {
-  width: min(42vw, calc((100vh - 126px) * 0.72));
+  width: min(42vw, calc((100vh - 48px) * 0.72));
 }
 .mode-paged.fit-original .reader-spread {
   grid-template-columns: repeat(2, max-content);
@@ -1592,12 +1582,6 @@ p {
     justify-content: center;
     padding: 8px;
     background: rgba(15, 15, 14, 0.93);
-  }
-  .reader-stage {
-    top: 120px;
-  }
-  .controls-hidden .reader-stage {
-    top: 0;
   }
   .reader-page-status {
     display: none;
@@ -1795,12 +1779,6 @@ p {
     padding-right: max(12px, var(--safe-right));
     padding-left: max(12px, var(--safe-left));
   }
-  .reader-stage {
-    top: calc(120px + var(--safe-top));
-  }
-  .controls-hidden .reader-stage {
-    top: 0;
-  }
   .reader-close,
   .reader-controls select {
     min-height: 48px;
@@ -1855,9 +1833,6 @@ p {
   .mode-paged.fit-height .reader-spread.is-single-page .paged-image {
     width: auto;
     max-width: 100%;
-    max-height: calc(100dvh - 148px - var(--safe-top) - var(--safe-bottom));
-  }
-  .controls-hidden .mode-paged.fit-height .reader-spread.is-single-page .paged-image {
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
   }
   .page-turn {
