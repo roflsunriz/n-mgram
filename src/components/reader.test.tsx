@@ -296,7 +296,7 @@ describe('Reader', () => {
     }
   });
 
-  it('pinch-zooms around touch pointers without turning the page', () => {
+  it('pinch-zooms around the two touch pointers without turning the page', async () => {
     render(
       <Reader
         manga={manga}
@@ -309,8 +309,12 @@ describe('Reader', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('reader-mode-paged'));
-    const stage = document.querySelector('.reader-stage')!;
+    const stage = document.querySelector('.reader-stage') as HTMLDivElement;
     const surface = screen.getByTestId('reader-zoom-surface');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0 } as DOMRect);
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 30 } as DOMRect);
+    const scrollTo = vi.mocked(stage.scrollTo);
+    scrollTo.mockClear();
 
     fireEvent.pointerDown(stage, {
       pointerId: 1,
@@ -335,13 +339,19 @@ describe('Reader', () => {
 
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('2');
     expect(screen.getByTestId('reader-zoom-reset').textContent).toBe('200%');
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        left: 80,
+        top: 170,
+      }),
+    );
     expect(screen.getByText('1 / 3')).toBeTruthy();
 
     fireEvent.pointerUp(stage, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 200 });
     fireEvent.pointerUp(stage, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200 });
   });
 
-  it('double-taps to zoom in and double-taps again to return to 100%', () => {
+  it('double-taps around the touched content and double-taps again to return to 100%', async () => {
     render(
       <Reader
         manga={manga}
@@ -354,7 +364,17 @@ describe('Reader', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('reader-mode-paged'));
-    const stage = document.querySelector('.reader-stage')!;
+    const stage = document.querySelector('.reader-stage') as HTMLDivElement;
+    const surface = screen.getByTestId('reader-zoom-surface');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 400,
+      height: 600,
+    } as DOMRect);
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 30 } as DOMRect);
+    const scrollTo = vi.mocked(stage.scrollTo);
+    scrollTo.mockClear();
     const tap = (pointerId: number) => {
       fireEvent.pointerDown(stage, {
         pointerId,
@@ -376,6 +396,12 @@ describe('Reader', () => {
     tap(2);
     expect(screen.getByTestId('reader-zoom-surface').style.getPropertyValue('--reader-zoom')).toBe(
       '2.5',
+    );
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        left: 90,
+        top: 225,
+      }),
     );
     expect(screen.getByText('1 / 3')).toBeTruthy();
 
@@ -541,6 +567,16 @@ describe('Reader', () => {
     expect(indicator.classList.contains('is-visible')).toBe(true);
     expect(indicator.querySelector('.reader-pull-spinner')).toBeTruthy();
 
+    fireEvent.touchStart(stage, {
+      touches: [
+        { identifier: 1, clientY: 140 },
+        { identifier: 2, clientY: 140 },
+      ],
+    });
+    expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('0px');
+    expect(indicator.classList.contains('is-visible')).toBe(false);
+
+    fireEvent.touchStart(stage, { touches: [{ identifier: 1, clientY: 100 }] });
     fireEvent.touchMove(stage, { touches: [{ identifier: 1, clientY: 180 }] });
     expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('40px');
     expect(indicator.classList.contains('is-ready')).toBe(true);
@@ -615,11 +651,13 @@ describe('Reader', () => {
     );
 
     const chapterSelect = screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement;
+    expect(screen.getByTestId('reader-chapter-position').textContent).toBe('1 / 2 (50%)');
     const headerSelector = document.querySelector('.reader-chapter-selector');
     expect(headerSelector?.children[0]).toBe(screen.getByTestId('reader-next-chapter-header'));
     expect(headerSelector?.children[2]).toBe(screen.getByTestId('reader-previous-chapter-header'));
     fireEvent.click(screen.getByTestId('reader-next-chapter-header'));
     expect(chapterSelect.value).toBe('1');
+    expect(screen.getByTestId('reader-chapter-position').textContent).toBe('2 / 2 (100%)');
 
     const footerNavigation = document.querySelector('.reader-chapter-footer');
     expect(footerNavigation?.children[0]).toBe(screen.getByTestId('reader-next-chapter-footer'));

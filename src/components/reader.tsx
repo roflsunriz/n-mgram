@@ -37,8 +37,11 @@ interface PointerPosition {
 }
 
 interface PinchGesture {
+  pointerIds: readonly [number, number];
   startDistance: number;
   startZoom: number;
+  surfaceOriginX: number;
+  surfaceOriginY: number;
   anchorContentX: number;
   anchorContentY: number;
 }
@@ -81,6 +84,7 @@ export function Reader({
   const pointerInToolbarRef = useRef(false);
   const fullscreenRef = useRef(false);
   const zoomRef = useRef(MIN_ZOOM);
+  const zoomSurfaceRef = useRef<HTMLDivElement>(null);
   const zoomScrollFrameRef = useRef<number | undefined>(undefined);
   const activePointersRef = useRef(new Map<number, PointerPosition>());
   const pinchRef = useRef<PinchGesture | undefined>(undefined);
@@ -187,14 +191,22 @@ export function Reader({
       setZoom(nextZoom);
       if (!stage) return;
 
-      const bounds = stage.getBoundingClientRect();
-      const focalX = (clientX ?? bounds.left + bounds.width / 2) - bounds.left;
-      const focalY = (clientY ?? bounds.top + bounds.height / 2) - bounds.top;
-      const contentX = (stage.scrollLeft + focalX) / previousZoom;
-      const contentY = (stage.scrollTop + focalY) / previousZoom;
-      queueStageScroll(contentX * nextZoom - focalX, contentY * nextZoom - focalY);
+      const stageBounds = stage.getBoundingClientRect();
+      const focalClientX = clientX ?? stageBounds.left + stageBounds.width / 2;
+      const focalClientY = clientY ?? stageBounds.top + stageBounds.height / 2;
+      const surfaceBounds = zoomSurfaceRef.current?.getBoundingClientRect();
+      const surfaceLeft = surfaceBounds?.left ?? stageBounds.left - stage.scrollLeft;
+      const surfaceTop =
+        (surfaceBounds?.top ?? stageBounds.top - stage.scrollTop) - pullRefresh.pullOffset;
+      const focalSurfaceX = focalClientX - surfaceLeft;
+      const focalSurfaceY = focalClientY - surfaceTop;
+      const zoomRatio = nextZoom / previousZoom;
+      queueStageScroll(
+        stage.scrollLeft + focalSurfaceX * (zoomRatio - 1),
+        stage.scrollTop + focalSurfaceY * (zoomRatio - 1),
+      );
     },
-    [queueStageScroll],
+    [pullRefresh.pullOffset, queueStageScroll],
   );
 
   const resetZoom = useCallback(() => setZoomAt(MIN_ZOOM), [setZoomAt]);
@@ -648,16 +660,33 @@ export function Reader({
             if (activePointersRef.current.size >= 2) {
               clearPendingTap();
               lastTapRef.current = undefined;
-              const [first, second] = [...activePointersRef.current.values()];
-              if (first && second) {
-                const bounds = event.currentTarget.getBoundingClientRect();
-                const centerX = (first.x + second.x) / 2 - bounds.left;
-                const centerY = (first.y + second.y) / 2 - bounds.top;
+              pullRefresh.cancelGesture();
+              if (activePointersRef.current.size > 2) {
+                suppressTapRef.current = true;
+                gestureRef.current = undefined;
+                return;
+              }
+              const [firstEntry, secondEntry] = [...activePointersRef.current.entries()];
+              if (firstEntry && secondEntry) {
+                const [firstId, first] = firstEntry;
+                const [secondId, second] = secondEntry;
+                const centerClientX = (first.x + second.x) / 2;
+                const centerClientY = (first.y + second.y) / 2;
+                const surfaceBounds = zoomSurfaceRef.current?.getBoundingClientRect();
+                const stageBounds = event.currentTarget.getBoundingClientRect();
+                const surfaceLeft =
+                  surfaceBounds?.left ?? stageBounds.left - event.currentTarget.scrollLeft;
+                const surfaceTop =
+                  (surfaceBounds?.top ?? stageBounds.top - event.currentTarget.scrollTop) -
+                  pullRefresh.pullOffset;
                 pinchRef.current = {
+                  pointerIds: [firstId, secondId],
                   startDistance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
                   startZoom: zoomRef.current,
-                  anchorContentX: (event.currentTarget.scrollLeft + centerX) / zoomRef.current,
-                  anchorContentY: (event.currentTarget.scrollTop + centerY) / zoomRef.current,
+                  surfaceOriginX: surfaceLeft + event.currentTarget.scrollLeft,
+                  surfaceOriginY: surfaceTop + event.currentTarget.scrollTop,
+                  anchorContentX: (centerClientX - surfaceLeft) / zoomRef.current,
+                  anchorContentY: (centerClientY - surfaceTop) / zoomRef.current,
                 };
                 suppressTapRef.current = true;
                 gestureRef.current = undefined;
@@ -688,18 +717,19 @@ export function Reader({
           const pinch = pinchRef.current;
           if (pinch && activePointersRef.current.size >= 2) {
             event.preventDefault();
-            const [first, second] = [...activePointersRef.current.values()];
+            const [firstId, secondId] = pinch.pointerIds;
+            const first = activePointersRef.current.get(firstId);
+            const second = activePointersRef.current.get(secondId);
             if (!first || !second) return;
-            const bounds = event.currentTarget.getBoundingClientRect();
-            const centerX = (first.x + second.x) / 2 - bounds.left;
-            const centerY = (first.y + second.y) / 2 - bounds.top;
+            const centerClientX = (first.x + second.x) / 2;
+            const centerClientY = (first.y + second.y) / 2;
             const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
             const nextZoom = clampZoom(pinch.startZoom * (distance / pinch.startDistance));
             zoomRef.current = nextZoom;
             setZoom(nextZoom);
             queueStageScroll(
-              pinch.anchorContentX * nextZoom - centerX,
-              pinch.anchorContentY * nextZoom - centerY,
+              pinch.surfaceOriginX + pinch.anchorContentX * nextZoom - centerClientX,
+              pinch.surfaceOriginY + pinch.anchorContentY * nextZoom - centerClientY,
             );
             return;
           }
@@ -719,17 +749,21 @@ export function Reader({
           );
         }}
         onPointerCancel={(event) => {
+          const pinch = pinchRef.current;
           activePointersRef.current.delete(event.pointerId);
-          pinchRef.current = undefined;
+          if (pinch?.pointerIds.includes(event.pointerId)) pinchRef.current = undefined;
           suppressTapRef.current = activePointersRef.current.size > 0;
           gestureRef.current = undefined;
         }}
         onPointerUp={(event) => {
           const touchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
-          const wasPinching = Boolean(pinchRef.current) || suppressTapRef.current;
+          const pinch = pinchRef.current;
+          const wasPinching = Boolean(pinch) || suppressTapRef.current;
           if (touchLike) activePointersRef.current.delete(event.pointerId);
           if (wasPinching) {
-            if (activePointersRef.current.size < 2) pinchRef.current = undefined;
+            if (activePointersRef.current.size < 2 || pinch?.pointerIds.includes(event.pointerId)) {
+              pinchRef.current = undefined;
+            }
             if (activePointersRef.current.size === 0) suppressTapRef.current = false;
             gestureRef.current = undefined;
             return;
@@ -787,7 +821,8 @@ export function Reader({
           )}
         />
         <div
-          className={`reader-zoom-surface ${pullRefresh.active ? 'is-pulling' : ''}`}
+          ref={zoomSurfaceRef}
+          className="reader-zoom-surface"
           data-testid="reader-zoom-surface"
           style={
             {
@@ -814,6 +849,7 @@ export function Reader({
               <ChapterEndNavigation
                 chapterIndex={chapterIndex}
                 chapterCount={chapters.length}
+                showChapterPosition
                 onChange={changeChapter}
                 t={t}
               />
@@ -946,15 +982,19 @@ function ChapterEndNavigation({
   className = '',
   chapterIndex,
   chapterCount,
+  showChapterPosition = false,
   onChange,
   t,
 }: {
   className?: string;
   chapterIndex: number;
   chapterCount: number;
+  showChapterPosition?: boolean;
   onChange: (chapterIndex: number) => void;
   t: Props['t'];
 }) {
+  const currentChapterPosition = chapterIndex + 1;
+  const chapterPercentage = Math.round((currentChapterPosition / chapterCount) * 100);
   return (
     <nav className={`reader-chapter-footer ${className}`} aria-label={t('chapters')}>
       <button
@@ -966,7 +1006,18 @@ function ChapterEndNavigation({
       >
         {t('nextChapter')}
       </button>
-      <p>{t('chapterComplete')}</p>
+      <div className="reader-chapter-footer-copy">
+        <p>{t('chapterComplete')}</p>
+        {showChapterPosition && (
+          <span data-testid="reader-chapter-position">
+            {t('chapterPosition', {
+              current: currentChapterPosition,
+              total: chapterCount,
+              percentage: chapterPercentage,
+            })}
+          </span>
+        )}
+      </div>
       <button
         type="button"
         className="reader-chapter-button"

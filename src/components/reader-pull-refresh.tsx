@@ -45,17 +45,24 @@ export function useReaderPullRefresh({
     [enabled, refreshing, reset],
   );
 
-  const onTouchMove: TouchEventHandler<HTMLDivElement> = useCallback((event) => {
-    const gesture = gestureRef.current;
-    const touch = event.touches[0];
-    if (!gesture || !touch || event.touches.length !== 1) return;
+  const onTouchMove: TouchEventHandler<HTMLDivElement> = useCallback(
+    (event) => {
+      const gesture = gestureRef.current;
+      const touch = event.touches[0];
+      if (event.touches.length !== 1) {
+        if (!refreshing) reset();
+        return;
+      }
+      if (!gesture || !touch) return;
 
-    const distance = Math.max(0, touch.clientY - gesture.startY);
-    gesture.distance = distance;
-    setPullOffset(Math.min(MAX_PULL_OFFSET_PX, distance * PULL_RESISTANCE));
-    setReady(distance >= PULL_TO_REFRESH_THRESHOLD_PX);
-    if (distance > 0) event.preventDefault();
-  }, []);
+      const distance = Math.max(0, touch.clientY - gesture.startY);
+      gesture.distance = distance;
+      setPullOffset(Math.min(MAX_PULL_OFFSET_PX, distance * PULL_RESISTANCE));
+      setReady(distance >= PULL_TO_REFRESH_THRESHOLD_PX);
+      if (distance > 0) event.preventDefault();
+    },
+    [refreshing, reset],
+  );
 
   const onTouchEnd: TouchEventHandler<HTMLDivElement> = useCallback(() => {
     const gesture = gestureRef.current;
@@ -80,7 +87,6 @@ export function useReaderPullRefresh({
   }, [reset]);
 
   return {
-    active: pullOffset > 0 && !refreshing,
     pullOffset,
     ready,
     refreshing,
@@ -89,6 +95,7 @@ export function useReaderPullRefresh({
     onTouchMove,
     onTouchEnd,
     onTouchCancel,
+    cancelGesture: reset,
     settle,
   };
 }
