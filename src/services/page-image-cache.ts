@@ -2,6 +2,7 @@ import { resolvePageImage, type ResolvedPageImage } from '../api/client';
 
 const MAX_MEMORY_CACHE_ENTRIES = 96;
 const MAX_MEMORY_CACHE_BYTES = 160 * 1024 * 1024;
+const MAX_CONCURRENT_IMAGE_LOADS = 8;
 const PERSISTENT_CACHE_NAME = 'n-mgram-page-images-v1';
 const MAX_PERSISTENT_CACHE_ENTRIES = 240;
 const MAX_PERSISTENT_CACHE_BYTES = 384 * 1024 * 1024;
@@ -19,6 +20,20 @@ interface MemoryCacheEntry {
   stale: boolean;
 }
 
+interface QueuedImageLoad {
+  url: string;
+  priority: ImageLoadPriority;
+  sequence: number;
+  resolve: (result: ResolvedPageImage) => void;
+  reject: (error: unknown) => void;
+}
+
+export type ImageLoadPriority = 'interactive' | 'prefetch';
+
+export interface AcquirePageImageOptions {
+  priority?: ImageLoadPriority;
+}
+
 export interface AcquiredPageImage {
   blocked: boolean;
   source?: string;
@@ -29,17 +44,25 @@ const memoryCache = new Map<string, MemoryCacheEntry>();
 const inFlightLoads = new Map<string, Promise<MemoryCacheEntry>>();
 const persistentStores = new Map<string, Promise<void>>();
 const persistentInvalidations = new Map<string, Promise<void>>();
+const queuedImageLoads: QueuedImageLoad[] = [];
+const queuedImageLoadsByUrl = new Map<string, QueuedImageLoad>();
 let persistentWrites = 0;
+let activeImageLoads = 0;
+let imageLoadSequence = 0;
 
 export async function acquirePageImage(
   url: string,
   signal: AbortSignal,
+  options: AcquirePageImageOptions = {},
 ): Promise<AcquiredPageImage> {
   if (signal.aborted) throw abortError();
 
   let entry = memoryCache.get(url);
   if (!entry || entry.stale) {
-    entry = await waitForPageImage(getOrCreatePageLoad(url), signal);
+    entry = await waitForPageImage(
+      getOrCreatePageLoad(url, options.priority ?? 'interactive'),
+      signal,
+    );
   }
   if (signal.aborted) throw abortError();
 
@@ -89,14 +112,19 @@ export function getPageImageCacheStats() {
     entries: memoryCache.size,
     bytes: [...memoryCache.values()].reduce((total, entry) => total + entry.byteLength, 0),
     inFlight: inFlightLoads.size,
+    active: activeImageLoads,
+    queued: queuedImageLoads.length,
   };
 }
 
-function getOrCreatePageLoad(url: string): Promise<MemoryCacheEntry> {
+function getOrCreatePageLoad(url: string, priority: ImageLoadPriority): Promise<MemoryCacheEntry> {
   const current = inFlightLoads.get(url);
-  if (current) return current;
+  if (current) {
+    promoteQueuedImageLoad(url, priority);
+    return current;
+  }
 
-  const load = loadPageImage(url)
+  const load = scheduleImageLoad(url, priority)
     .then((result) => {
       const existing = memoryCache.get(url);
       if (existing && !existing.stale) {
@@ -120,6 +148,54 @@ function getOrCreatePageLoad(url: string): Promise<MemoryCacheEntry> {
     .finally(() => inFlightLoads.delete(url));
   inFlightLoads.set(url, load);
   return load;
+}
+
+function scheduleImageLoad(url: string, priority: ImageLoadPriority): Promise<ResolvedPageImage> {
+  const promise = new Promise<ResolvedPageImage>((resolve, reject) => {
+    const queued: QueuedImageLoad = {
+      url,
+      priority,
+      sequence: imageLoadSequence,
+      resolve,
+      reject,
+    };
+    imageLoadSequence += 1;
+    queuedImageLoads.push(queued);
+    queuedImageLoadsByUrl.set(url, queued);
+  });
+  drainImageLoadQueue();
+  return promise;
+}
+
+function promoteQueuedImageLoad(url: string, priority: ImageLoadPriority): void {
+  const queued = queuedImageLoadsByUrl.get(url);
+  if (queued && getImageLoadPriority(priority) < getImageLoadPriority(queued.priority)) {
+    queued.priority = priority;
+  }
+}
+
+function drainImageLoadQueue(): void {
+  while (activeImageLoads < MAX_CONCURRENT_IMAGE_LOADS && queuedImageLoads.length > 0) {
+    queuedImageLoads.sort(
+      (left, right) =>
+        getImageLoadPriority(left.priority) - getImageLoadPriority(right.priority) ||
+        left.sequence - right.sequence,
+    );
+    const queued = queuedImageLoads.shift();
+    if (!queued) return;
+    queuedImageLoadsByUrl.delete(queued.url);
+    activeImageLoads += 1;
+    void loadPageImage(queued.url)
+      .then(queued.resolve, queued.reject)
+      .finally(() => {
+        activeImageLoads -= 1;
+        drainImageLoadQueue();
+      });
+  }
+}
+
+function getImageLoadPriority(priority: ImageLoadPriority): number {
+  return priority === 'interactive' ? 0 : 1;
 }
 
 async function loadPageImage(url: string): Promise<ResolvedPageImage> {

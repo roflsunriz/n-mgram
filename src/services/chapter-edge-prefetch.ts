@@ -1,7 +1,7 @@
 import type { Chapter } from '../api/client';
 import { acquirePageImage } from './page-image-cache';
 
-const EDGE_PAGE_COUNT = 2;
+const EDGE_PAGE_COUNT = 8;
 
 export function getChapterEdgePageUrls(chapters: readonly Chapter[]): string[] {
   if (chapters.length === 0) return [];
@@ -24,7 +24,9 @@ export function getChapterEdgePageUrls(chapters: readonly Chapter[]): string[] {
 export async function prefetchChapterEdges(chapters: readonly Chapter[]): Promise<void> {
   await Promise.allSettled(
     getChapterEdgePageUrls(chapters).map(async (url) => {
-      const image = await acquirePageImage(url, new AbortController().signal);
+      const image = await acquirePageImage(url, new AbortController().signal, {
+        priority: 'prefetch',
+      });
       image.release();
     }),
   );

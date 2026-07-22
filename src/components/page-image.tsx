@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { PageImageError } from '../api/client';
-import {
-  acquirePageImage,
-  invalidatePageImageCache,
-  type AcquiredPageImage,
-} from '../services/page-image-cache';
+import { acquirePageImage, invalidatePageImageCache } from '../services/page-image-cache';
 
 interface Props {
   url: string;
@@ -20,44 +16,8 @@ interface Props {
 }
 
 const PAGE_PRELOAD_MARGIN = '12000px 0px';
-const MAX_CONCURRENT_PAGE_LOADS = 8;
 const RETRY_DELAYS_MS = [600, 1_800];
 const MAX_DECODE_RETRIES = 1;
-
-let activePageLoads = 0;
-const queuedPageLoads: Array<() => void> = [];
-
-function drainPageLoadQueue() {
-  while (activePageLoads < MAX_CONCURRENT_PAGE_LOADS) {
-    const start = queuedPageLoads.shift();
-    if (!start) return;
-    activePageLoads += 1;
-    start();
-  }
-}
-
-function schedulePageLoad(
-  run: () => Promise<AcquiredPageImage>,
-  signal: AbortSignal,
-): Promise<AcquiredPageImage> {
-  return new Promise((resolve, reject) => {
-    queuedPageLoads.push(() => {
-      if (signal.aborted) {
-        activePageLoads -= 1;
-        drainPageLoadQueue();
-        reject(new DOMException('Image load aborted', 'AbortError'));
-        return;
-      }
-      void run()
-        .then(resolve, reject)
-        .finally(() => {
-          activePageLoads -= 1;
-          drainPageLoadQueue();
-        });
-    });
-    drainPageLoadQueue();
-  });
-}
 
 function waitForRetry(delay: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -125,10 +85,7 @@ export function PageImage({
     void (async () => {
       for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
         try {
-          const result = await schedulePageLoad(
-            () => acquirePageImage(url, controller.signal),
-            controller.signal,
-          );
+          const result = await acquirePageImage(url, controller.signal);
           if (controller.signal.aborted) {
             result.release();
             return;

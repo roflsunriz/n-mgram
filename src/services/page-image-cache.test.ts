@@ -90,4 +90,44 @@ describe('page image cache', () => {
     expect(resolvePageImage).toHaveBeenCalledTimes(2);
     second.release();
   });
+
+  it('caps shared image work at eight and lets visible images jump ahead of queued prefetches', async () => {
+    const pending = new Map<string, (value: { blocked: false; source: string }) => void>();
+    vi.mocked(resolvePageImage).mockImplementation(
+      (url) =>
+        new Promise((resolve) => {
+          pending.set(url, resolve);
+        }),
+    );
+    const prefetches = Array.from({ length: 10 }, (_, index) =>
+      acquirePageImage(`https://ihlv1.xyz/prefetch-${index}.webp`, new AbortController().signal, {
+        priority: 'prefetch',
+      }),
+    );
+    await vi.waitFor(() => expect(resolvePageImage).toHaveBeenCalledTimes(8));
+
+    const interactive = acquirePageImage(
+      'https://ihlv1.xyz/visible.webp',
+      new AbortController().signal,
+    );
+    pending.get('https://ihlv1.xyz/prefetch-0.webp')?.({
+      blocked: false,
+      source: 'blob:prefetch-0',
+    });
+    pending.delete('https://ihlv1.xyz/prefetch-0.webp');
+    await vi.waitFor(() =>
+      expect(vi.mocked(resolvePageImage).mock.calls[8]?.[0]).toBe('https://ihlv1.xyz/visible.webp'),
+    );
+
+    while (vi.mocked(resolvePageImage).mock.calls.length < 11 || pending.size > 0) {
+      for (const [url, finish] of [...pending]) {
+        finish({ blocked: false, source: `blob:${url}` });
+        pending.delete(url);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const handles = await Promise.all([...prefetches, interactive]);
+    handles.forEach((handle) => handle.release());
+    expect(getPageImageCacheStats()).toMatchObject({ active: 0, queued: 0 });
+  });
 });

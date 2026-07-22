@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Chapter, Manga } from '../api/client';
 import type { MessageKey } from '../i18n';
+import { prefetchReaderPages } from '../services/reader-prefetch';
 import {
   loadReaderSettings,
   saveReaderSettings,
@@ -226,6 +227,12 @@ export function Reader({
   useEffect(() => {
     saveReaderSettings(readerSettings);
   }, [readerSettings]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void prefetchReaderPages(chapters, chapterIndex, pageIndex, controller.signal);
+    return () => controller.abort();
+  }, [chapterIndex, chapters, pageIndex]);
 
   useEffect(() => {
     if (chapter && pageUrls.length > 0) onProgress(chapter, activePageIndex);

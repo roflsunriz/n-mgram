@@ -1,6 +1,6 @@
 [package]
 name = "n-mgram"
-version = "0.3.2"
+version = "0.4.0"
 description = "A focused manga reader"
 authors = ["roflsunriz"]
 edition = "2021"
