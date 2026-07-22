@@ -70,7 +70,8 @@ const messages = {
     libraryHint: '作品を選ぶと詳細と章一覧を表示します。',
     views: '{count} 閲覧',
     updatedAt: '更新 {date}',
-    readerHelp: '右綴じ：左右タップ／スワイプでページ移動、ピンチ・ダブルタップ・Ctrl±でズーム',
+    readerHelp:
+      '右綴じ：左右タップ／スワイプでページ移動、縦読みは左右スワイプで章移動、先頭を下引きで再読み込み、拡大中はドラッグで移動',
     enterFullscreen: '全画面表示（F11）',
     exitFullscreen: '全画面表示を終了（F11）',
     close: '閉じる',
@@ -216,7 +217,8 @@ const messages = {
     libraryHint: 'Select a title to see its details and chapters.',
     views: '{count} views',
     updatedAt: 'Updated {date}',
-    readerHelp: 'Right-bound: tap or swipe to turn pages; pinch, double-tap, or Ctrl± to zoom',
+    readerHelp:
+      'Right-bound: tap or swipe to turn pages; swipe sideways to change chapters in scroll mode; pull down at the top to reload; drag to pan while zoomed',
     enterFullscreen: 'Enter fullscreen (F11)',
     exitFullscreen: 'Exit fullscreen (F11)',
     close: 'Close',

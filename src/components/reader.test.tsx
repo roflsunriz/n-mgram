@@ -416,6 +416,126 @@ describe('Reader', () => {
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
   });
 
+  it.each([
+    { pointerType: 'mouse', label: 'Windows mouse' },
+    { pointerType: 'touch', label: 'Android touch' },
+  ])('pans a zoomed page by dragging with $label', async ({ pointerType }) => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+
+    const stage = document.querySelector('.reader-stage') as HTMLDivElement;
+    const scrollTo = vi.mocked(stage.scrollTo);
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    scrollTo.mockClear();
+
+    fireEvent.pointerDown(stage, {
+      pointerId: 1,
+      pointerType,
+      isPrimary: true,
+      button: 0,
+      clientX: 240,
+      clientY: 220,
+    });
+    fireEvent.pointerMove(stage, {
+      pointerId: 1,
+      pointerType,
+      isPrimary: true,
+      buttons: 1,
+      clientX: 140,
+      clientY: 100,
+    });
+
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        left: 100,
+        top: 120,
+      }),
+    );
+    fireEvent.pointerUp(stage, {
+      pointerId: 1,
+      pointerType,
+      isPrimary: true,
+      button: 0,
+      clientX: 140,
+      clientY: 100,
+    });
+
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+  });
+
+  it('changes chapters with horizontal swipes in continuous mode', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={multipleChapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    const stage = document.querySelector('.reader-stage')!;
+    const chapterSelect = screen.getByRole('combobox', { name: '章' }) as HTMLSelectElement;
+    const swipe = (startX: number, endX: number, pointerId: number) => {
+      fireEvent.pointerDown(stage, {
+        pointerId,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: startX,
+        clientY: 180,
+      });
+      fireEvent.pointerUp(stage, {
+        pointerId,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: endX,
+        clientY: 180,
+      });
+    };
+
+    swipe(240, 120, 1);
+    expect(chapterSelect.value).toBe('1');
+    expect(document.querySelector('.reader-title span')?.textContent).toBe('第2話');
+
+    swipe(120, 240, 2);
+    expect(chapterSelect.value).toBe('0');
+    expect(document.querySelector('.reader-title span')?.textContent).toBe('第1話');
+  });
+
+  it('reloads the first continuous page after pulling down at the top', async () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+    const stage = document.querySelector('.reader-stage') as HTMLDivElement;
+    const originalFirstPage = await screen.findByRole('img', { name: '1' });
+
+    fireEvent.touchStart(stage, { touches: [{ identifier: 1, clientY: 100 }] });
+    fireEvent.touchMove(stage, { touches: [{ identifier: 1, clientY: 180 }] });
+    fireEvent.touchEnd(stage, { touches: [] });
+
+    await waitFor(() => expect(screen.getByRole('img', { name: '1' })).not.toBe(originalFirstPage));
+  });
+
   it('restores the selected reader mode and fit across reader sessions', async () => {
     const firstSession = render(
       <Reader

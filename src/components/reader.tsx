@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Chapter, Manga } from '../api/client';
 import type { MessageKey } from '../i18n';
+import { invalidatePageImageCache } from '../services/page-image-cache';
 import { prefetchReaderPages } from '../services/reader-prefetch';
 import {
   loadReaderSettings,
@@ -23,6 +24,7 @@ const TAP_MOVEMENT_TOLERANCE_PX = 10;
 const TAP_MAX_DURATION_MS = 500;
 const DOUBLE_TAP_DELAY_MS = 280;
 const DOUBLE_TAP_DISTANCE_PX = 36;
+const PULL_TO_REFRESH_THRESHOLD_PX = 72;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
@@ -69,6 +71,7 @@ export function Reader({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [zoom, setZoom] = useState(MIN_ZOOM);
+  const [firstPageReloadGeneration, setFirstPageReloadGeneration] = useState(0);
   const windowsFullscreenAvailable = isWindowsTauriApp();
   const chapter = chapters[chapterIndex];
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -81,6 +84,7 @@ export function Reader({
   const zoomScrollFrameRef = useRef<number | undefined>(undefined);
   const activePointersRef = useRef(new Map<number, PointerPosition>());
   const pinchRef = useRef<PinchGesture | undefined>(undefined);
+  const pullRefreshRef = useRef<{ startY: number; distance: number } | undefined>(undefined);
   const suppressTapRef = useRef(false);
   const lastTapRef = useRef<{ at: number; x: number; y: number } | undefined>(undefined);
   const pendingTapRef = useRef<
@@ -97,6 +101,8 @@ export function Reader({
         pointerType: string;
         x: number;
         y: number;
+        scrollLeft: number;
+        scrollTop: number;
         startedAt: number;
       }
     | undefined
@@ -112,6 +118,13 @@ export function Reader({
       return new Set([...current, url]);
     });
   }, []);
+
+  const refreshFirstPage = useCallback(() => {
+    const firstPageUrl = pageUrls[0];
+    if (!firstPageUrl) return;
+    invalidatePageImageCache(firstPageUrl);
+    setFirstPageReloadGeneration((value) => value + 1);
+  }, [pageUrls]);
 
   const cancelControlsHide = useCallback(() => {
     if (controlsTimerRef.current !== undefined) {
@@ -619,6 +632,34 @@ export function Reader({
             event.clientY,
           );
         }}
+        onTouchStart={(event) => {
+          if (
+            mode !== 'continuous' ||
+            zoomRef.current > MIN_ZOOM + 0.01 ||
+            event.currentTarget.scrollTop > 0 ||
+            event.touches.length !== 1
+          ) {
+            pullRefreshRef.current = undefined;
+            return;
+          }
+          const touch = event.touches[0];
+          if (touch) pullRefreshRef.current = { startY: touch.clientY, distance: 0 };
+        }}
+        onTouchMove={(event) => {
+          const pull = pullRefreshRef.current;
+          const touch = event.touches[0];
+          if (!pull || !touch || event.touches.length !== 1) return;
+          pull.distance = touch.clientY - pull.startY;
+          if (pull.distance > 0) event.preventDefault();
+        }}
+        onTouchEnd={() => {
+          const pull = pullRefreshRef.current;
+          pullRefreshRef.current = undefined;
+          if (pull && pull.distance >= PULL_TO_REFRESH_THRESHOLD_PX) refreshFirstPage();
+        }}
+        onTouchCancel={() => {
+          pullRefreshRef.current = undefined;
+        }}
         onPointerDown={(event) => {
           const touchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
           if (touchLike) {
@@ -646,32 +687,55 @@ export function Reader({
           } else if (event.isPrimary === false) {
             return;
           }
+          if (zoomRef.current > MIN_ZOOM + 0.01 && (touchLike || event.button === 0)) {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
           gestureRef.current = {
             pointerId: event.pointerId,
             pointerType: event.pointerType,
             x: event.clientX,
             y: event.clientY,
+            scrollLeft: event.currentTarget.scrollLeft,
+            scrollTop: event.currentTarget.scrollTop,
             startedAt: performance.now(),
           };
         }}
         onPointerMove={(event) => {
-          if (!activePointersRef.current.has(event.pointerId)) return;
-          activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          const trackedTouchPointer = activePointersRef.current.has(event.pointerId);
+          if (trackedTouchPointer) {
+            activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          }
           const pinch = pinchRef.current;
-          if (!pinch || activePointersRef.current.size < 2) return;
+          if (pinch && activePointersRef.current.size >= 2) {
+            event.preventDefault();
+            const [first, second] = [...activePointersRef.current.values()];
+            if (!first || !second) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const centerX = (first.x + second.x) / 2 - bounds.left;
+            const centerY = (first.y + second.y) / 2 - bounds.top;
+            const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+            const nextZoom = clampZoom(pinch.startZoom * (distance / pinch.startDistance));
+            zoomRef.current = nextZoom;
+            setZoom(nextZoom);
+            queueStageScroll(
+              pinch.anchorContentX * nextZoom - centerX,
+              pinch.anchorContentY * nextZoom - centerY,
+            );
+            return;
+          }
+
+          const gesture = gestureRef.current;
+          if (
+            !gesture ||
+            gesture.pointerId !== event.pointerId ||
+            zoomRef.current <= MIN_ZOOM + 0.01
+          ) {
+            return;
+          }
           event.preventDefault();
-          const [first, second] = [...activePointersRef.current.values()];
-          if (!first || !second) return;
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const centerX = (first.x + second.x) / 2 - bounds.left;
-          const centerY = (first.y + second.y) / 2 - bounds.top;
-          const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
-          const nextZoom = clampZoom(pinch.startZoom * (distance / pinch.startDistance));
-          zoomRef.current = nextZoom;
-          setZoom(nextZoom);
           queueStageScroll(
-            pinch.anchorContentX * nextZoom - centerX,
-            pinch.anchorContentY * nextZoom - centerY,
+            gesture.scrollLeft - (event.clientX - gesture.x),
+            gesture.scrollTop - (event.clientY - gesture.y),
           );
         }}
         onPointerCancel={(event) => {
@@ -709,6 +773,19 @@ export function Reader({
             return;
           }
 
+          if (
+            mode === 'continuous' &&
+            zoomRef.current <= MIN_ZOOM + 0.01 &&
+            Math.abs(dx) >= SWIPE_THRESHOLD_PX &&
+            Math.abs(dx) > Math.abs(dy) * 1.2
+          ) {
+            const nextChapterIndex = dx < 0 ? chapterIndex + 1 : chapterIndex - 1;
+            if (nextChapterIndex >= 0 && nextChapterIndex < chapters.length) {
+              changeChapter(nextChapterIndex);
+            }
+            return;
+          }
+
           if (distance > TAP_MOVEMENT_TOLERANCE_PX || elapsed > TAP_MAX_DURATION_MS) return;
           if (gesture.pointerType === 'touch' || gesture.pointerType === 'pen') {
             handleTouchTap(event.clientX, event.clientY);
@@ -726,7 +803,7 @@ export function Reader({
             <>
               {pageUrls.map((src, index) => (
                 <ReaderImage
-                  key={`${src}-${index}`}
+                  key={`${src}-${index}-${index === 0 ? firstPageReloadGeneration : 0}`}
                   src={src}
                   index={index}
                   onVisible={setPageIndex}

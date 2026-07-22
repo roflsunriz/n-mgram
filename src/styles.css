@@ -1306,11 +1306,20 @@ p {
   inset: 66px 0 0;
   overflow: auto;
   scrollbar-color: #444 #111;
+  overscroll-behavior: contain;
   touch-action: pan-y;
   transition: top 220ms ease;
 }
 .reader-stage.is-zoomed {
-  touch-action: pan-x pan-y;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.reader-stage.is-zoomed:active {
+  cursor: grabbing;
+}
+.reader-stage.is-zoomed .reader-image {
+  -webkit-user-drag: none;
 }
 .reader-zoom-surface {
   width: 100%;
