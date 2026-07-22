@@ -11,6 +11,7 @@ import {
 } from '../storage/reader-settings-store';
 import { ArrowLeftIcon, ArrowRightIcon, BookIcon, CloseIcon, FullscreenIcon } from './icons';
 import { PageImage } from './page-image';
+import { ReaderPullRefreshIndicator, useReaderPullRefresh } from './reader-pull-refresh';
 import {
   getLastSpreadStart,
   getNextSpreadStart,
@@ -24,7 +25,6 @@ const TAP_MOVEMENT_TOLERANCE_PX = 10;
 const TAP_MAX_DURATION_MS = 500;
 const DOUBLE_TAP_DELAY_MS = 280;
 const DOUBLE_TAP_DISTANCE_PX = 36;
-const PULL_TO_REFRESH_THRESHOLD_PX = 72;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
@@ -84,7 +84,6 @@ export function Reader({
   const zoomScrollFrameRef = useRef<number | undefined>(undefined);
   const activePointersRef = useRef(new Map<number, PointerPosition>());
   const pinchRef = useRef<PinchGesture | undefined>(undefined);
-  const pullRefreshRef = useRef<{ startY: number; distance: number } | undefined>(undefined);
   const suppressTapRef = useRef(false);
   const lastTapRef = useRef<{ at: number; x: number; y: number } | undefined>(undefined);
   const pendingTapRef = useRef<
@@ -125,6 +124,10 @@ export function Reader({
     invalidatePageImageCache(firstPageUrl);
     setFirstPageReloadGeneration((value) => value + 1);
   }, [pageUrls]);
+  const pullRefresh = useReaderPullRefresh({
+    enabled: mode === 'continuous' && zoom <= MIN_ZOOM + 0.01 && pageUrls.length > 0,
+    onRefresh: refreshFirstPage,
+  });
 
   const cancelControlsHide = useCallback(() => {
     if (controlsTimerRef.current !== undefined) {
@@ -633,34 +636,10 @@ export function Reader({
             event.clientY,
           );
         }}
-        onTouchStart={(event) => {
-          if (
-            mode !== 'continuous' ||
-            zoomRef.current > MIN_ZOOM + 0.01 ||
-            event.currentTarget.scrollTop > 0 ||
-            event.touches.length !== 1
-          ) {
-            pullRefreshRef.current = undefined;
-            return;
-          }
-          const touch = event.touches[0];
-          if (touch) pullRefreshRef.current = { startY: touch.clientY, distance: 0 };
-        }}
-        onTouchMove={(event) => {
-          const pull = pullRefreshRef.current;
-          const touch = event.touches[0];
-          if (!pull || !touch || event.touches.length !== 1) return;
-          pull.distance = touch.clientY - pull.startY;
-          if (pull.distance > 0) event.preventDefault();
-        }}
-        onTouchEnd={() => {
-          const pull = pullRefreshRef.current;
-          pullRefreshRef.current = undefined;
-          if (pull && pull.distance >= PULL_TO_REFRESH_THRESHOLD_PX) refreshFirstPage();
-        }}
-        onTouchCancel={() => {
-          pullRefreshRef.current = undefined;
-        }}
+        onTouchStart={pullRefresh.onTouchStart}
+        onTouchMove={pullRefresh.onTouchMove}
+        onTouchEnd={pullRefresh.onTouchEnd}
+        onTouchCancel={pullRefresh.onTouchCancel}
         onPointerDown={(event) => {
           const touchLike = event.pointerType === 'touch' || event.pointerType === 'pen';
           if (touchLike) {
@@ -780,7 +759,7 @@ export function Reader({
             Math.abs(dx) >= SWIPE_THRESHOLD_PX &&
             Math.abs(dx) > Math.abs(dy) * 1.2
           ) {
-            const nextChapterIndex = dx < 0 ? chapterIndex + 1 : chapterIndex - 1;
+            const nextChapterIndex = dx > 0 ? chapterIndex + 1 : chapterIndex - 1;
             if (nextChapterIndex >= 0 && nextChapterIndex < chapters.length) {
               changeChapter(nextChapterIndex);
             }
@@ -795,10 +774,27 @@ export function Reader({
           }
         }}
       >
+        <ReaderPullRefreshIndicator
+          visible={pullRefresh.visible}
+          ready={pullRefresh.ready}
+          refreshing={pullRefresh.refreshing}
+          label={t(
+            pullRefresh.refreshing
+              ? 'refreshingImage'
+              : pullRefresh.ready
+                ? 'releaseToRefresh'
+                : 'pullToRefresh',
+          )}
+        />
         <div
-          className="reader-zoom-surface"
+          className={`reader-zoom-surface ${pullRefresh.active ? 'is-pulling' : ''}`}
           data-testid="reader-zoom-surface"
-          style={{ '--reader-zoom': zoom } as CSSProperties}
+          style={
+            {
+              '--reader-zoom': zoom,
+              '--reader-pull-offset': `${pullRefresh.pullOffset}px`,
+            } as CSSProperties
+          }
         >
           {mode === 'continuous' ? (
             <>
@@ -812,6 +808,7 @@ export function Reader({
                   loadFailedLabel={t('imageLoadFailed')}
                   retryLabel={t('reloadImage')}
                   eager={index < 10 || Math.abs(index - activePageIndex) <= 8}
+                  onSettled={index === 0 ? pullRefresh.settle : undefined}
                 />
               ))}
               <ChapterEndNavigation
@@ -918,6 +915,7 @@ function ReaderImage({
   loadFailedLabel,
   retryLabel,
   eager,
+  onSettled,
 }: {
   src: string;
   index: number;
@@ -926,6 +924,7 @@ function ReaderImage({
   loadFailedLabel: string;
   retryLabel: string;
   eager: boolean;
+  onSettled?: () => void;
 }) {
   return (
     <PageImage
@@ -936,6 +935,7 @@ function ReaderImage({
       eager={eager}
       loadFailedLabel={loadFailedLabel}
       retryLabel={retryLabel}
+      onSettled={onSettled}
       onVisible={() => onVisible(index)}
       onBlocked={onBlocked}
     />

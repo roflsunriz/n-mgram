@@ -478,7 +478,7 @@ describe('Reader', () => {
     expect(screen.getByText('1 / 3')).toBeTruthy();
   });
 
-  it('changes chapters with horizontal swipes in continuous mode', () => {
+  it('advances chapters with a right swipe and returns with a left swipe in continuous mode', () => {
     render(
       <Reader
         manga={manga}
@@ -509,11 +509,11 @@ describe('Reader', () => {
       });
     };
 
-    swipe(240, 120, 1);
+    swipe(120, 240, 1);
     expect(chapterSelect.value).toBe('1');
     expect(document.querySelector('.reader-title span')?.textContent).toBe('第2話');
 
-    swipe(120, 240, 2);
+    swipe(240, 120, 2);
     expect(chapterSelect.value).toBe('0');
     expect(document.querySelector('.reader-title span')?.textContent).toBe('第1話');
   });
@@ -531,13 +531,33 @@ describe('Reader', () => {
       />,
     );
     const stage = document.querySelector('.reader-stage') as HTMLDivElement;
+    const surface = screen.getByTestId('reader-zoom-surface');
+    const indicator = screen.getByTestId('reader-pull-refresh');
     const originalFirstPage = await screen.findByRole('img', { name: '1' });
 
     fireEvent.touchStart(stage, { touches: [{ identifier: 1, clientY: 100 }] });
-    fireEvent.touchMove(stage, { touches: [{ identifier: 1, clientY: 180 }] });
-    fireEvent.touchEnd(stage, { touches: [] });
+    fireEvent.touchMove(stage, { touches: [{ identifier: 1, clientY: 140 }] });
+    expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('20px');
+    expect(indicator.classList.contains('is-visible')).toBe(true);
+    expect(indicator.querySelector('.reader-pull-spinner')).toBeTruthy();
 
-    await waitFor(() => expect(screen.getByRole('img', { name: '1' })).not.toBe(originalFirstPage));
+    fireEvent.touchMove(stage, { touches: [{ identifier: 1, clientY: 180 }] });
+    expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('40px');
+    expect(indicator.classList.contains('is-ready')).toBe(true);
+    expect(indicator.getAttribute('aria-label')).toBe('指を離して再読み込み');
+    fireEvent.touchEnd(stage, { touches: [] });
+    expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('44px');
+    expect(indicator.classList.contains('is-refreshing')).toBe(true);
+
+    const reloadedFirstPage = await waitFor(() => {
+      const image = screen.getByRole('img', { name: '1' });
+      expect(image).not.toBe(originalFirstPage);
+      return image;
+    });
+    fireEvent.load(reloadedFirstPage);
+
+    expect(surface.style.getPropertyValue('--reader-pull-offset')).toBe('0px');
+    expect(indicator.classList.contains('is-visible')).toBe(false);
   });
 
   it('restores the selected reader mode and fit across reader sessions', async () => {

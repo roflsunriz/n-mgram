@@ -1323,8 +1323,56 @@ p {
 .reader-zoom-surface {
   width: 100%;
   min-height: 100%;
-  transform: scale(var(--reader-zoom, 1));
+  transform: translate3d(0, var(--reader-pull-offset, 0px), 0) scale(var(--reader-zoom, 1));
   transform-origin: top left;
+  transition: transform 180ms ease-out;
+  will-change: transform;
+}
+.reader-zoom-surface.is-pulling {
+  transition: none;
+}
+.reader-pull-refresh {
+  position: absolute;
+  z-index: 6;
+  top: calc(14px + var(--safe-top));
+  left: 50%;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(24, 24, 22, 0.94);
+  border-radius: 50%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -64px) scale(0.78);
+  transition:
+    opacity 140ms ease,
+    transform 180ms ease;
+}
+.reader-pull-refresh.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.reader-pull-refresh.is-ready {
+  border-color: rgba(241, 166, 111, 0.72);
+  background: rgba(55, 38, 29, 0.96);
+}
+.reader-pull-spinner {
+  width: 19px;
+  height: 19px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent-soft);
+  border-radius: 50%;
+}
+.reader-pull-refresh.is-visible .reader-pull-spinner {
+  animation: reader-pull-spin 0.72s linear infinite;
+}
+@keyframes reader-pull-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .mode-continuous {
   padding: 22px 18px 80px;

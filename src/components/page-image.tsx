@@ -13,6 +13,7 @@ interface Props {
   retryLabel: string;
   onBlocked: (url: string) => void;
   onVisible?: () => void;
+  onSettled?: () => void;
 }
 
 const PAGE_PRELOAD_MARGIN = '12000px 0px';
@@ -44,6 +45,7 @@ export function PageImage({
   retryLabel,
   onBlocked,
   onVisible,
+  onSettled,
 }: Props) {
   const elementRef = useRef<HTMLElement>(null);
   const [loadRequested, setLoadRequested] = useState(eager);
@@ -91,6 +93,7 @@ export function PageImage({
             return;
           }
           if (result.blocked) {
+            onSettled?.();
             onBlocked(url);
             return;
           }
@@ -104,6 +107,7 @@ export function PageImage({
           const retryable = !(error instanceof PageImageError) || error.retryable;
           if (!retryable || delay === undefined) {
             setFailed(true);
+            onSettled?.();
             return;
           }
           try {
@@ -119,7 +123,7 @@ export function PageImage({
       controller.abort();
       release?.();
     };
-  }, [loadGeneration, loadRequested, onBlocked, url]);
+  }, [loadGeneration, loadRequested, onBlocked, onSettled, url]);
 
   useEffect(() => {
     if (!source || !onVisible) return;
@@ -144,6 +148,7 @@ export function PageImage({
         alt={alt}
         decoding="async"
         data-page-index={pageIndex}
+        onLoad={onSettled}
         onError={() => {
           invalidatePageImageCache(url);
           setSource(undefined);
@@ -152,6 +157,7 @@ export function PageImage({
             setLoadGeneration((value) => value + 1);
           } else {
             setFailed(true);
+            onSettled?.();
           }
         }}
         hidden={hidden}

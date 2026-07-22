@@ -93,6 +93,7 @@ describe('PageImage preloading', () => {
 
   it('offers manual reload after a final failure', async () => {
     vi.mocked(resolvePageImage).mockRejectedValueOnce(new PageImageError('invalid', false));
+    const onSettled = vi.fn();
     render(
       <PageImage
         className="reader-image"
@@ -101,14 +102,36 @@ describe('PageImage preloading', () => {
         eager
         {...labels}
         onBlocked={vi.fn()}
+        onSettled={onSettled}
       />,
     );
 
     const retry = await screen.findByRole('button', { name: labels.retryLabel });
+    expect(onSettled).toHaveBeenCalledOnce();
     vi.mocked(resolvePageImage).mockResolvedValueOnce({ blocked: false, source: 'blob:reloaded' });
     fireEvent.click(retry);
 
     await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:reloaded'));
+  });
+
+  it('reports when the loaded image has finished decoding', async () => {
+    const onSettled = vi.fn();
+    render(
+      <PageImage
+        className="reader-image"
+        url="https://ihlv1.xyz/settled.webp"
+        alt="4"
+        eager
+        {...labels}
+        onBlocked={vi.fn()}
+        onSettled={onSettled}
+      />,
+    );
+
+    const image = await screen.findByRole('img');
+    expect(onSettled).not.toHaveBeenCalled();
+    fireEvent.load(image);
+    expect(onSettled).toHaveBeenCalledOnce();
   });
 
   it('reuses the cached source after leaving and reopening the same page', async () => {
