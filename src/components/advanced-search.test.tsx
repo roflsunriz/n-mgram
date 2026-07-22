@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTranslator } from '../i18n';
-import { createDefaultMangaFilters, type MangaFilters } from '../search/manga-search';
+import { createDefaultMangaFilters } from '../search/manga-search';
 import { AdvancedSearch } from './advanced-search';
 
 afterEach(cleanup);
@@ -15,109 +15,89 @@ const suggestions = {
   translationGroups: ['Group A'],
 };
 
-describe('AdvancedSearch', () => {
-  it('renders a stable control for every searchable metadata field', () => {
-    render(
-      <AdvancedSearch
-        filters={createDefaultMangaFilters()}
-        suggestions={suggestions}
-        onChange={vi.fn()}
-        onApply={vi.fn()}
-        onQuickApply={vi.fn()}
-        onReset={vi.fn()}
-        t={createTranslator('ja')}
-      />,
-    );
+function renderSearch(overrides: Partial<React.ComponentProps<typeof AdvancedSearch>> = {}) {
+  const filters = createDefaultMangaFilters();
+  const props: React.ComponentProps<typeof AdvancedSearch> = {
+    filters,
+    appliedFilters: filters,
+    suggestions,
+    onChange: vi.fn(),
+    onApply: vi.fn(),
+    onApplyFilters: vi.fn(),
+    onSortChange: vi.fn(),
+    onClearDraft: vi.fn(),
+    t: createTranslator('ja'),
+    ...overrides,
+  };
+  render(<AdvancedSearch {...props} />);
+  return props;
+}
 
-    const fields: Array<keyof MangaFilters> = [
-      'title',
-      'otherName',
+describe('AdvancedSearch', () => {
+  it('shows only reader-facing filters and keeps technical metadata out of the UI', () => {
+    renderSearch();
+
+    expect(document.querySelector('[data-filter-field="genres"]')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'すべて' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /^コモン/ })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /^レジェンダリー/ })).toBeTruthy();
+    expect(screen.getByTestId('search-sort')).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'APIの関連順' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '完結' })).toBeNull();
+
+    for (const hiddenField of [
       'slug',
-      'author',
-      'artist',
-      'genres',
-      'magazine',
-      'translationGroup',
-      'description',
-      'cover',
       'mangaId',
-      'releasedFrom',
-      'releasedTo',
-      'viewsFrom',
-      'viewsTo',
-      'chapterFrom',
-      'chapterTo',
-      'postedFrom',
-      'postedTo',
-      'updatedFrom',
-      'updatedTo',
       'submitter',
       'groupUploader',
-      'status',
-      'hidden',
-      'sortBy',
-      'direction',
-    ];
-    for (const field of fields)
-      expect(document.querySelector(`[data-filter-field="${field}"]`)).toBeTruthy();
+      'cover',
+      'releasedFrom',
+      'releasedTo',
+    ]) {
+      expect(document.querySelector(`[data-filter-field="${hiddenField}"]`)).toBeNull();
+    }
   });
 
-  it('reports field changes and apply/reset actions', () => {
+  it('stages filter changes and sends them only from the result action', () => {
     const onChange = vi.fn();
     const onApply = vi.fn();
-    const onReset = vi.fn();
-    render(
-      <AdvancedSearch
-        filters={createDefaultMangaFilters()}
-        suggestions={suggestions}
-        onChange={onChange}
-        onApply={onApply}
-        onQuickApply={vi.fn()}
-        onReset={onReset}
-        t={createTranslator('ja')}
-      />,
-    );
+    const onClearDraft = vi.fn();
+    renderSearch({ onChange, onApply, onClearDraft });
 
-    fireEvent.change(document.querySelector('[data-filter-field="artist"]')!, {
-      target: { value: 'Artist A' },
+    fireEvent.change(document.querySelector('[data-filter-field="genres"]')!, {
+      target: { value: 'fantasy' },
     });
-    fireEvent.change(document.querySelector('[data-filter-field="status"]')!, {
-      target: { value: 'completed' },
-    });
+    fireEvent.click(screen.getByRole('radio', { name: /レア/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'action' }));
+
+    expect(onChange).toHaveBeenCalledWith('genres', 'fantasy');
+    expect(onChange).toHaveBeenCalledWith('chapterLength', 'rare');
+    expect(onChange).toHaveBeenCalledWith('genres', 'action');
+    expect(onApply).not.toHaveBeenCalled();
+
     fireEvent.click(screen.getByTestId('apply-filters'));
     fireEvent.click(screen.getByTestId('reset-filters'));
-
-    expect(onChange).toHaveBeenCalledWith('artist', 'Artist A');
-    expect(onChange).toHaveBeenCalledWith('status', 'completed');
     expect(onApply).toHaveBeenCalledOnce();
-    expect(onReset).toHaveBeenCalledOnce();
+    expect(onClearDraft).toHaveBeenCalledOnce();
   });
 
-  it('keeps common filters visible and applies quick filter buttons immediately', () => {
-    const onQuickApply = vi.fn();
-    render(
-      <AdvancedSearch
-        filters={createDefaultMangaFilters()}
-        suggestions={suggestions}
-        onChange={vi.fn()}
-        onApply={vi.fn()}
-        onQuickApply={onQuickApply}
-        onReset={vi.fn()}
-        t={createTranslator('ja')}
-      />,
-    );
+  it('shows removable applied filters and changes sorting without submitting another search', () => {
+    const onApplyFilters = vi.fn();
+    const onSortChange = vi.fn();
+    const appliedFilters = {
+      ...createDefaultMangaFilters('magic'),
+      genres: 'action',
+      chapterLength: 'legendary' as const,
+    };
+    renderSearch({ appliedFilters, filters: appliedFilters, onApplyFilters, onSortChange });
 
-    const details = document.querySelector('.advanced-search-details')!;
-    expect(details.hasAttribute('open')).toBe(false);
-    expect(details.contains(document.querySelector('[data-filter-field="genres"]'))).toBe(false);
-    expect(details.contains(document.querySelector('[data-filter-field="title"]'))).toBe(true);
+    expect(screen.getByText('2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'actionを解除' }));
+    expect(onApplyFilters).toHaveBeenCalledWith(expect.objectContaining({ genres: '' }));
+    fireEvent.click(screen.getByRole('button', { name: 'チャプター数: レジェンダリーを解除' }));
+    expect(onApplyFilters).toHaveBeenCalledWith(expect.objectContaining({ chapterLength: 'any' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'action' }));
-    fireEvent.click(screen.getByRole('button', { name: '完結' }));
-    fireEvent.click(screen.getByRole('button', { name: '人気' }));
-
-    expect(onQuickApply).toHaveBeenCalledWith({ genres: 'action' });
-    expect(onQuickApply).toHaveBeenCalledWith({ status: 'completed' });
-    expect(onQuickApply).toHaveBeenCalledWith({ sortBy: 'views', direction: 'desc' });
+    fireEvent.change(screen.getByTestId('search-sort'), { target: { value: 'views:desc' } });
+    expect(onSortChange).toHaveBeenCalledWith('views', 'desc');
   });
 });

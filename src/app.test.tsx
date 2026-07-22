@@ -125,7 +125,8 @@ describe('App library pages', () => {
     expect(screen.getByText('第3話 · 0% 読了')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('library-tab-search'));
-    expect(screen.getByRole('heading', { name: '作品を検索' })).toBeTruthy();
+    expect(screen.getByTestId('advanced-search')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '作品を検索' })).toBeNull();
     expect(screen.queryByText('復元された作品')).toBeNull();
 
     fireEvent.click(screen.getByTestId('library-tab-updates'));
@@ -152,15 +153,22 @@ describe('App library pages', () => {
     }
   });
 
-  it('applies a quick sort button immediately from the search page', async () => {
+  it('sorts loaded search results without sending another API request', async () => {
     render(<App />);
     fireEvent.click(screen.getByTestId('library-tab-search'));
 
-    fireEvent.click(screen.getByRole('button', { name: '人気' }));
-
+    fireEvent.change(screen.getByLabelText('作品名・作者名で検索'), {
+      target: { value: 'magic' },
+    });
+    const searchInput = screen.getByLabelText('作品名・作者名で検索');
+    fireEvent.submit(searchInput.closest('form')!);
     await waitFor(() => expect(searchManga).toHaveBeenCalledOnce());
-    expect(vi.mocked(searchManga).mock.calls[0]?.[0]).toMatchObject({ page: 1, size: 100 });
-    expect(screen.getByRole('button', { name: '人気' }).getAttribute('aria-pressed')).toBe('true');
+    vi.mocked(searchManga).mockClear();
+
+    fireEvent.change(screen.getByTestId('search-sort'), { target: { value: 'views:desc' } });
+
+    expect(searchManga).not.toHaveBeenCalled();
+    expect((screen.getByTestId('search-sort') as HTMLSelectElement).value).toBe('views:desc');
   });
 
   it('prefetches chapter edges only when opening a manga without reading history', async () => {

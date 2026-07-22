@@ -1,7 +1,7 @@
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent } from 'react';
 import type { MessageKey } from '../i18n';
 import {
-  createDefaultMangaFilters,
+  type ChapterLengthTier,
   type MangaFilters,
   type MangaSortKey,
   type SortDirection,
@@ -17,63 +17,45 @@ export interface MetadataSuggestions {
 
 interface Props {
   filters: MangaFilters;
+  appliedFilters: MangaFilters;
   suggestions: MetadataSuggestions;
   onChange: (key: keyof MangaFilters, value: string) => void;
   onApply: () => void;
-  onQuickApply: (overrides: Partial<MangaFilters>) => void;
-  onReset: () => void;
+  onApplyFilters: (filters: MangaFilters) => void;
+  onSortChange: (sortBy: MangaSortKey, direction: SortDirection) => void;
+  onClearDraft: () => void;
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
 }
 
-const sortOptions: Array<[MangaSortKey, MessageKey]> = [
-  ['relevance', 'sortRelevance'],
-  ['id', 'mangaId'],
-  ['name', 'titleLabel'],
-  ['otherName', 'alternativeTitle'],
-  ['slug', 'slugLabel'],
-  ['authors', 'authorLabel'],
-  ['artists', 'artistLabel'],
-  ['genres', 'genresLabel'],
-  ['magazines', 'magazineLabel'],
-  ['transGroup', 'translationGroup'],
-  ['description', 'descriptionLabel'],
-  ['released', 'releasedLabel'],
-  ['mStatus', 'statusLabel'],
-  ['views', 'viewsLabel'],
-  ['lastUpdate', 'updatedDate'],
-  ['post', 'postedDate'],
-  ['lastChapter', 'latestChapter'],
-  ['submitter', 'submitterId'],
-  ['groupUploader', 'uploaderId'],
-  ['hidden', 'visibility'],
-  ['cover', 'coverUrl'],
+const sortOptions: Array<[MangaSortKey, SortDirection, MessageKey]> = [
+  ['lastUpdate', 'desc', 'sortRecentlyUpdated'],
+  ['views', 'desc', 'sortPopular'],
+  ['lastChapter', 'desc', 'sortNewestChapter'],
 ];
 
-const quickSortOptions: Array<[MangaSortKey, SortDirection, MessageKey]> = [
-  ['relevance', 'asc', 'sortRelevance'],
-  ['views', 'desc', 'popular'],
-  ['lastUpdate', 'desc', 'updated'],
-  ['lastChapter', 'desc', 'latestChapter'],
+const chapterLengthOptions: Array<[ChapterLengthTier, MessageKey, MessageKey?]> = [
+  ['any', 'allValues'],
+  ['common', 'chapterTierCommon', 'chapterRangeCommon'],
+  ['uncommon', 'chapterTierUncommon', 'chapterRangeUncommon'],
+  ['rare', 'chapterTierRare', 'chapterRangeRare'],
+  ['epic', 'chapterTierEpic', 'chapterRangeEpic'],
+  ['legendary', 'chapterTierLegendary', 'chapterRangeLegendary'],
 ];
-
-const commonFilterKeys = new Set<keyof MangaFilters>([
-  'keyword',
-  'genres',
-  'status',
-  'sortBy',
-  'direction',
-]);
 
 export function AdvancedSearch({
   filters,
+  appliedFilters,
   suggestions,
   onChange,
   onApply,
-  onQuickApply,
-  onReset,
+  onApplyFilters,
+  onSortChange,
+  onClearDraft,
   t,
 }: Props) {
-  const advancedActiveCount = countAdvancedFilters(filters);
+  const appliedChips = createAppliedChips(appliedFilters, t);
+  const selectedSort = `${appliedFilters.sortBy}:${appliedFilters.direction}`;
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onApply();
@@ -81,309 +63,160 @@ export function AdvancedSearch({
 
   return (
     <section className="advanced-search" data-testid="advanced-search">
-      <form onSubmit={submit}>
-        <div className="common-search-controls" data-testid="common-search-controls">
-          <div className="common-filter-grid">
-            <FilterInput
-              label={t('genresLabel')}
-              value={filters.genres}
-              field="genres"
-              list="genres-list"
-              placeholder={t('commaSeparated')}
-              onChange={onChange}
-            />
-            <label className="filter-field">
-              <span>{t('statusLabel')}</span>
-              <select
-                data-filter-field="status"
-                value={filters.status}
-                onChange={(event) => onChange('status', event.target.value)}
-              >
-                <option value="any">{t('allValues')}</option>
-                <option value="ongoing">{t('ongoing')}</option>
-                <option value="completed">{t('completed')}</option>
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>{t('sortBy')}</span>
-              <select
-                data-filter-field="sortBy"
-                value={filters.sortBy}
-                onChange={(event) => onChange('sortBy', event.target.value)}
-              >
-                {sortOptions.map(([value, label]) => (
-                  <option value={value} key={value}>
-                    {t(label)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>{t('direction')}</span>
-              <select
-                data-filter-field="direction"
-                value={filters.direction}
-                onChange={(event) => onChange('direction', event.target.value)}
-              >
-                <option value="asc">{t('ascending')}</option>
-                <option value="desc">{t('descending')}</option>
-              </select>
-            </label>
-          </div>
-
-          {suggestions.genres.length > 0 && (
-            <QuickFilterRow label={t('popularGenres')}>
-              {suggestions.genres.slice(0, 8).map((genre) => {
-                const selected = includesListValue(filters.genres, genre);
-                return (
-                  <button
-                    type="button"
-                    className={selected ? 'active' : ''}
-                    aria-pressed={selected}
-                    key={genre}
-                    onClick={() => onQuickApply({ genres: toggleListValue(filters.genres, genre) })}
-                  >
-                    {genre}
-                  </button>
-                );
-              })}
-            </QuickFilterRow>
-          )}
-
-          <QuickFilterRow label={t('quickStatus')}>
-            {(['any', 'ongoing', 'completed'] as const).map((status) => (
-              <button
-                type="button"
-                className={filters.status === status ? 'active' : ''}
-                aria-pressed={filters.status === status}
-                key={status}
-                onClick={() => onQuickApply({ status })}
-              >
-                {t(status === 'any' ? 'allValues' : status)}
-              </button>
-            ))}
-          </QuickFilterRow>
-
-          <QuickFilterRow label={t('quickSort')}>
-            {quickSortOptions.map(([sortBy, direction, label]) => {
-              const selected = filters.sortBy === sortBy && filters.direction === direction;
-              return (
-                <button
-                  type="button"
-                  className={selected ? 'active' : ''}
-                  aria-pressed={selected}
-                  key={`${sortBy}-${direction}`}
-                  onClick={() => onQuickApply({ sortBy, direction })}
-                >
-                  {t(label)}
-                </button>
-              );
-            })}
-          </QuickFilterRow>
-          <p className="quick-filter-hint">{t('quickApplyHint')}</p>
-        </div>
-
-        <details className="advanced-search-details">
+      <div className="search-filter-toolbar">
+        <details className="filter-drawer">
           <summary>
             <span>{t('advancedSearch')}</span>
-            {advancedActiveCount > 0 && <span className="filter-count">{advancedActiveCount}</span>}
+            {appliedChips.length > 0 && <span className="filter-count">{appliedChips.length}</span>}
           </summary>
-          <div className="advanced-search-content">
-            <p className="filter-hint">{t('filterHint')}</p>
+          <form onSubmit={submit}>
             <fieldset>
-              <legend>{t('textMetadata')}</legend>
-              <div className="filter-grid">
-                <FilterInput
-                  label={t('titleLabel')}
-                  value={filters.title}
-                  field="title"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('alternativeTitle')}
-                  value={filters.otherName}
-                  field="otherName"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('slugLabel')}
-                  value={filters.slug}
-                  field="slug"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('authorLabel')}
-                  value={filters.author}
-                  field="author"
-                  list="authors-list"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('artistLabel')}
-                  value={filters.artist}
-                  field="artist"
-                  list="artists-list"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('magazineLabel')}
-                  value={filters.magazine}
-                  field="magazine"
-                  list="magazines-list"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('translationGroup')}
-                  value={filters.translationGroup}
-                  field="translationGroup"
-                  list="translation-groups-list"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('descriptionLabel')}
-                  value={filters.description}
-                  field="description"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('coverUrl')}
-                  value={filters.cover}
-                  field="cover"
-                  onChange={onChange}
-                />
-              </div>
+              <legend>{t('genresLabel')}</legend>
+              <FilterInput
+                label={t('genresLabel')}
+                value={filters.genres}
+                field="genres"
+                list="genres-list"
+                placeholder={t('commaSeparated')}
+                onChange={onChange}
+              />
+              {suggestions.genres.length > 0 && (
+                <div className="filter-options" aria-label={t('popularGenres')}>
+                  {suggestions.genres.slice(0, 8).map((genre) => {
+                    const selected = includesListValue(filters.genres, genre);
+                    return (
+                      <button
+                        type="button"
+                        className={selected ? 'active' : ''}
+                        aria-pressed={selected}
+                        key={genre}
+                        onClick={() => onChange('genres', toggleListValue(filters.genres, genre))}
+                      >
+                        {genre}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </fieldset>
 
             <fieldset>
-              <legend>{t('numericMetadata')}</legend>
-              <div className="filter-grid">
-                <FilterInput
-                  label={t('mangaId')}
-                  value={filters.mangaId}
-                  field="mangaId"
-                  type="number"
-                  min="1"
-                  onChange={onChange}
-                />
-                <RangeInputs
-                  label={t('releasedLabel')}
-                  from={filters.releasedFrom}
-                  to={filters.releasedTo}
-                  fromField="releasedFrom"
-                  toField="releasedTo"
-                  onChange={onChange}
-                  t={t}
-                />
-                <RangeInputs
-                  label={t('viewsLabel')}
-                  from={filters.viewsFrom}
-                  to={filters.viewsTo}
-                  fromField="viewsFrom"
-                  toField="viewsTo"
-                  onChange={onChange}
-                  t={t}
-                />
-                <RangeInputs
-                  label={t('latestChapter')}
-                  from={filters.chapterFrom}
-                  to={filters.chapterTo}
-                  fromField="chapterFrom"
-                  toField="chapterTo"
-                  step="0.1"
-                  onChange={onChange}
-                  t={t}
-                />
-                <FilterInput
-                  label={t('submitterId')}
-                  value={filters.submitter}
-                  field="submitter"
-                  type="number"
-                  min="0"
-                  onChange={onChange}
-                />
-                <FilterInput
-                  label={t('uploaderId')}
-                  value={filters.groupUploader}
-                  field="groupUploader"
-                  type="number"
-                  min="0"
-                  onChange={onChange}
-                />
+              <legend>{t('chapterLength')}</legend>
+              <div className="filter-options chapter-tier-options">
+                {chapterLengthOptions.map(([tier, label, range]) => (
+                  <label className="filter-radio chapter-tier" key={tier}>
+                    <input
+                      type="radio"
+                      name="chapter-length"
+                      value={tier}
+                      checked={filters.chapterLength === tier}
+                      onChange={(event) => onChange('chapterLength', event.target.value)}
+                    />
+                    <span>
+                      <strong>{t(label)}</strong>
+                      {range && <small>{t(range)}</small>}
+                    </span>
+                  </label>
+                ))}
               </div>
             </fieldset>
 
-            <fieldset>
-              <legend>{t('datesAndState')}</legend>
-              <div className="filter-grid">
-                <RangeInputs
-                  label={t('postedDate')}
-                  from={filters.postedFrom}
-                  to={filters.postedTo}
-                  fromField="postedFrom"
-                  toField="postedTo"
-                  type="date"
-                  onChange={onChange}
-                  t={t}
-                />
-                <RangeInputs
-                  label={t('updatedDate')}
-                  from={filters.updatedFrom}
-                  to={filters.updatedTo}
-                  fromField="updatedFrom"
-                  toField="updatedTo"
-                  type="date"
-                  onChange={onChange}
-                  t={t}
-                />
-                <label className="filter-field">
-                  <span>{t('visibility')}</span>
-                  <select
-                    data-filter-field="hidden"
-                    value={filters.hidden}
-                    onChange={(event) => onChange('hidden', event.target.value)}
-                  >
-                    <option value="visible">{t('visibleOnly')}</option>
-                    <option value="hidden">{t('hiddenOnly')}</option>
-                    <option value="any">{t('allValues')}</option>
-                  </select>
-                </label>
-              </div>
-            </fieldset>
-          </div>
+            <div className="filter-actions">
+              <button type="button" onClick={onClearDraft} data-testid="reset-filters">
+                {t('clearFilters')}
+              </button>
+              <button type="submit" className="apply-filters" data-testid="apply-filters">
+                {t('applyFilters')}
+              </button>
+            </div>
+          </form>
         </details>
 
-        <div className="filter-actions">
-          <button type="button" onClick={onReset} data-testid="reset-filters">
+        <label className="sort-control">
+          <span>{t('sortBy')}</span>
+          <select
+            data-testid="search-sort"
+            value={selectedSort}
+            onChange={(event) => {
+              const option = sortOptions.find(
+                ([sortBy, direction]) => `${sortBy}:${direction}` === event.target.value,
+              );
+              if (option) onSortChange(option[0], option[1]);
+            }}
+          >
+            {sortOptions.map(([sortBy, direction, label]) => (
+              <option value={`${sortBy}:${direction}`} key={`${sortBy}:${direction}`}>
+                {t(label)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {appliedChips.length > 0 && (
+        <div className="applied-filters" aria-label={t('appliedFilters')}>
+          {appliedChips.map((chip) => (
+            <button
+              type="button"
+              key={chip.id}
+              onClick={() => onApplyFilters(chip.remove(appliedFilters))}
+              aria-label={t('removeFilter', { value: chip.label })}
+            >
+              <span>{chip.label}</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            className="clear-applied-filters"
+            onClick={() => onApplyFilters(clearVisibleFilters(appliedFilters))}
+          >
             {t('clearFilters')}
           </button>
-          <button type="submit" className="apply-filters" data-testid="apply-filters">
-            {t('applyFilters')}
-          </button>
         </div>
-        <SuggestionList id="authors-list" values={suggestions.authors} />
-        <SuggestionList id="artists-list" values={suggestions.artists} />
-        <SuggestionList id="genres-list" values={suggestions.genres} />
-        <SuggestionList id="magazines-list" values={suggestions.magazines} />
-        <SuggestionList id="translation-groups-list" values={suggestions.translationGroups} />
-      </form>
+      )}
+
+      <SuggestionList id="genres-list" values={suggestions.genres} />
     </section>
   );
 }
 
-function QuickFilterRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="quick-filter-row">
-      <span>{label}</span>
-      <div>{children}</div>
-    </div>
-  );
+interface AppliedChip {
+  id: string;
+  label: string;
+  remove: (filters: MangaFilters) => MangaFilters;
 }
 
-function countAdvancedFilters(filters: MangaFilters): number {
-  const defaults = createDefaultMangaFilters();
-  return (Object.keys(defaults) as Array<keyof MangaFilters>).filter(
-    (key) => !commonFilterKeys.has(key) && filters[key] !== defaults[key],
-  ).length;
+function createAppliedChips(
+  filters: MangaFilters,
+  t: (key: MessageKey, values?: Record<string, string | number>) => string,
+): AppliedChip[] {
+  const chips: AppliedChip[] = splitList(filters.genres).map((genre) => ({
+    id: `genre-${genre}`,
+    label: genre,
+    remove: (current) => ({ ...current, genres: removeListValue(current.genres, genre) }),
+  }));
+
+  if (filters.chapterLength !== 'any') {
+    const option = chapterLengthOptions.find(([tier]) => tier === filters.chapterLength);
+    if (option) {
+      chips.push({
+        id: 'chapter-length',
+        label: `${t('chapterLength')}: ${t(option[1])}`,
+        remove: (current) => ({ ...current, chapterLength: 'any' }),
+      });
+    }
+  }
+
+  return chips;
+}
+
+function clearVisibleFilters(filters: MangaFilters): MangaFilters {
+  return {
+    ...filters,
+    genres: '',
+    chapterLength: 'any',
+  };
 }
 
 function splitList(value: string): string[] {
@@ -407,89 +240,39 @@ function toggleListValue(current: string, value: string): string {
   return next.join(', ');
 }
 
+function removeListValue(current: string, value: string): string {
+  const normalized = value.toLocaleLowerCase();
+  return splitList(current)
+    .filter((item) => item.toLocaleLowerCase() !== normalized)
+    .join(', ');
+}
+
 function FilterInput({
   label,
   field,
   value,
   onChange,
-  type = 'text',
   list,
   placeholder,
-  min,
 }: {
   label: string;
   field: keyof MangaFilters;
   value: string;
   onChange: (key: keyof MangaFilters, value: string) => void;
-  type?: 'text' | 'number';
   list?: string;
   placeholder?: string;
-  min?: string;
 }) {
   return (
     <label className="filter-field">
       <span>{label}</span>
       <input
         data-filter-field={field}
-        type={type}
         value={value}
         list={list}
         placeholder={placeholder}
-        min={min}
         onChange={(event) => onChange(field, event.target.value)}
       />
     </label>
-  );
-}
-
-function RangeInputs({
-  label,
-  from,
-  to,
-  fromField,
-  toField,
-  onChange,
-  t,
-  type = 'number',
-  step,
-}: {
-  label: string;
-  from: string;
-  to: string;
-  fromField: keyof MangaFilters;
-  toField: keyof MangaFilters;
-  onChange: (key: keyof MangaFilters, value: string) => void;
-  t: (key: MessageKey, values?: Record<string, string | number>) => string;
-  type?: 'number' | 'date';
-  step?: string;
-}) {
-  return (
-    <div className="filter-field range-field">
-      <span>{label}</span>
-      <div>
-        <input
-          data-filter-field={fromField}
-          type={type}
-          value={from}
-          placeholder={t('from')}
-          min={type === 'number' ? '0' : undefined}
-          step={step}
-          onChange={(event) => onChange(fromField, event.target.value)}
-          aria-label={`${label} ${t('from')}`}
-        />
-        <span>–</span>
-        <input
-          data-filter-field={toField}
-          type={type}
-          value={to}
-          placeholder={t('to')}
-          min={type === 'number' ? '0' : undefined}
-          step={step}
-          onChange={(event) => onChange(toField, event.target.value)}
-          aria-label={`${label} ${t('to')}`}
-        />
-      </div>
-    </div>
   );
 }
 

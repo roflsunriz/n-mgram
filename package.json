@@ -1,7 +1,7 @@
 {
   "name": "n-mgram",
   "private": true,
-  "version": "0.5.4",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "type-check": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sync:android-icons": "bun scripts/sync-android-icons.mjs",
     "check": "bun run lint && bun run format && bun run type-check && bun run test && bun run build",
     "tauri": "tauri"
   },

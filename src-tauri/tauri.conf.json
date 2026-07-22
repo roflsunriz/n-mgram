@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "n-mgram",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "identifier": "com.roflsunriz.n-mgram",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run sync:android-icons && bun run build",
     "frontendDist": "../dist"
   },
   "app": {

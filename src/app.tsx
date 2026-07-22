@@ -23,7 +23,10 @@ import {
   createMangaSearchRequest,
   filterAndSortManga,
   getDirectMangaId,
+  hasSearchCriteria,
   type MangaFilters,
+  type MangaSortKey,
+  type SortDirection,
 } from './search/manga-search';
 import { checkHistoryUpdates } from './services/history-update-checker';
 import { loadFavoriteCatalog } from './services/favorite-catalog-loader';
@@ -291,7 +294,16 @@ export function App() {
   }, []);
 
   const submitSearch = (filters: MangaFilters) => {
+    setDraftFilters(filters);
     setAppliedFilters(filters);
+    if (!hasSearchCriteria(filters)) {
+      setSearchItems([]);
+      setSearchError(undefined);
+      setSearchStarted(false);
+      setSearchPage(1);
+      setSearchHasMore(false);
+      return;
+    }
     setSearchStarted(true);
     navigateLibraryPage('search');
     void loadSearch(1, false, filters);
@@ -300,26 +312,25 @@ export function App() {
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
     const nextFilters = { ...draftFilters, keyword: query.trim() };
-    setDraftFilters(nextFilters);
     submitSearch(nextFilters);
   };
 
-  const applyAdvancedFilters = (overrides: Partial<MangaFilters> = {}) => {
-    const nextFilters = { ...draftFilters, ...overrides, keyword: query.trim() };
-    setDraftFilters(nextFilters);
+  const applyAdvancedFilters = () => {
+    const nextFilters = { ...draftFilters, keyword: query.trim() };
     submitSearch(nextFilters);
   };
 
-  const resetFilters = () => {
-    const defaults = createDefaultMangaFilters();
-    setQuery('');
-    setDraftFilters(defaults);
-    setAppliedFilters(defaults);
-    setSearchItems([]);
-    setSearchError(undefined);
-    setSearchStarted(false);
-    setSearchPage(1);
-    setSearchHasMore(false);
+  const clearDraftFilters = () => {
+    setDraftFilters((current) => ({
+      ...createDefaultMangaFilters(current.keyword),
+      sortBy: current.sortBy,
+      direction: current.direction,
+    }));
+  };
+
+  const changeSearchSort = (sortBy: MangaSortKey, direction: SortDirection) => {
+    setDraftFilters((current) => ({ ...current, sortBy, direction }));
+    setAppliedFilters((current) => ({ ...current, sortBy, direction }));
   };
 
   const openManga = async (manga: Manga, addHistoryEntry = true) => {
@@ -535,20 +546,17 @@ export function App() {
 
         {libraryPage === 'search' && (
           <>
-            <PageHeading
-              title={t('searchHeading')}
-              hint={t('searchPageHint')}
-              eyebrow="FIND YOUR NEXT STORY"
-            />
             <AdvancedSearch
               filters={draftFilters}
+              appliedFilters={appliedFilters}
               suggestions={metadataSuggestions}
               onChange={(key, value) =>
                 setDraftFilters((current) => ({ ...current, [key]: value }) as MangaFilters)
               }
               onApply={applyAdvancedFilters}
-              onQuickApply={applyAdvancedFilters}
-              onReset={resetFilters}
+              onApplyFilters={submitSearch}
+              onSortChange={changeSearchSort}
+              onClearDraft={clearDraftFilters}
               t={t}
             />
             {!searchStarted ? (

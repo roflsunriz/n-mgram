@@ -62,12 +62,11 @@ describe('manga metadata search', () => {
     }
   });
 
-  it('combines text, status, numeric, date, technical, and visibility filters', () => {
+  it('combines text, numeric, date, technical, and visibility filters', () => {
     const filters = {
       ...createDefaultMangaFilters(),
       artist: 'Artist B',
       genres: 'drama, romance',
-      status: 'completed' as const,
       viewsFrom: '800',
       chapterFrom: '20',
       postedFrom: '2024-01-01',
@@ -79,11 +78,35 @@ describe('manga metadata search', () => {
     expect(filterAndSortManga([base, beta], filters)).toEqual([beta]);
   });
 
+  it('groups fractional chapter counts into measured volume tiers without gaps', () => {
+    const volumes = [0, 10, 10.1, 25, 25.1, 50, 50.1, 100, 100.1].map((lastChapter, index) => ({
+      ...base,
+      id: index + 10,
+      lastChapter: String(lastChapter),
+    }));
+
+    const expected: Array<
+      [ReturnType<typeof createDefaultMangaFilters>['chapterLength'], number[]]
+    > = [
+      ['common', [11]],
+      ['uncommon', [12, 13]],
+      ['rare', [14, 15]],
+      ['epic', [16, 17]],
+      ['legendary', [18]],
+    ];
+
+    for (const [chapterLength, ids] of expected) {
+      const filters = { ...createDefaultMangaFilters(), chapterLength };
+      expect(filterAndSortManga(volumes, filters).map((manga) => manga.id)).toEqual(ids);
+    }
+  });
+
   it('sorts numeric and text metadata in either direction', () => {
     const byViews = {
       ...createDefaultMangaFilters(),
       hidden: 'any' as const,
       sortBy: 'views' as const,
+      direction: 'asc' as const,
     };
     expect(filterAndSortManga([beta, base], byViews).map((manga) => manga.id)).toEqual([1, 2]);
     expect(
@@ -99,7 +122,6 @@ describe('manga metadata search', () => {
         author: 'Author',
         genres: 'action, fantasy',
         magazine: 'Comic',
-        status: 'ongoing',
       },
       2,
       100,
@@ -110,7 +132,7 @@ describe('manga metadata search', () => {
       authors: 'Author',
       genres: ['action', 'fantasy'],
       magazines: 'Comic',
-      status: 'Ongoing',
+      status: 'Any',
       page: 2,
       size: 100,
     });
