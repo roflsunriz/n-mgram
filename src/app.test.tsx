@@ -171,6 +171,53 @@ describe('App library pages', () => {
     expect((screen.getByTestId('search-sort') as HTMLSelectElement).value).toBe('views:desc');
   });
 
+  it('warms every Discover sort and switches cached tabs without another request or loader', async () => {
+    const mangaBySort: Record<string, Manga> = {
+      update: { ...restoredManga, id: 11, name: '更新順の作品' },
+      new: { ...restoredManga, id: 12, name: '新着の作品' },
+      top: { ...restoredManga, id: 13, name: '人気の作品' },
+    };
+    vi.mocked(getCollection).mockImplementation(async (_page, order) => [mangaBySort[order]!]);
+
+    render(<App />);
+
+    await waitFor(() => expect(getCollection).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByTestId('manga-11')).toBeTruthy());
+    expect(getCollection).toHaveBeenCalledWith(1, 'update', 24);
+    expect(getCollection).toHaveBeenCalledWith(1, 'new', 24);
+    expect(getCollection).toHaveBeenCalledWith(1, 'top', 24);
+
+    fireEvent.click(screen.getByRole('button', { name: '新着' }));
+    expect(screen.getByTestId('manga-12')).toBeTruthy();
+    expect(document.querySelector('.loading-row')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '人気' }));
+    expect(screen.getByTestId('manga-13')).toBeTruthy();
+    expect(document.querySelector('.loading-row')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '更新順' }));
+    expect(screen.getByTestId('manga-11')).toBeTruthy();
+    expect(getCollection).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not duplicate a background request when its Discover tab is selected early', async () => {
+    let resolveNewest: ((items: Manga[]) => void) | undefined;
+    vi.mocked(getCollection).mockImplementation((_page, order) =>
+      order === 'new'
+        ? new Promise<Manga[]>((resolve) => {
+            resolveNewest = resolve;
+          })
+        : Promise.resolve([]),
+    );
+
+    render(<App />);
+    await waitFor(() => expect(getCollection).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole('button', { name: '新着' }));
+
+    expect(vi.mocked(getCollection).mock.calls.filter((call) => call[1] === 'new')).toHaveLength(1);
+    resolveNewest?.([]);
+  });
+
   it('prefetches chapter edges only when opening a manga without reading history', async () => {
     const unreadManga = { ...restoredManga, id: 8, name: '未読の作品' };
     vi.mocked(getCollection).mockResolvedValueOnce([unreadManga]);

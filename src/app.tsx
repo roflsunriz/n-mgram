@@ -50,6 +50,30 @@ const NAVIGATION_STATE_KEY = 'nMgramScreen';
 const NAVIGATION_PAGE_STATE_KEY = 'nMgramLibraryPage';
 const COLLECTION_PAGE_SIZE = 24;
 const SEARCH_PAGE_SIZE = 100;
+const COLLECTION_SORTS = ['update', 'new', 'top'] as const satisfies readonly CollectionSort[];
+const BACKGROUND_COVER_PRELOAD_COUNT = 12;
+
+interface DiscoverCollection {
+  items: Manga[];
+  page: number;
+  hasMore: boolean;
+  loading: boolean;
+  error?: string;
+}
+
+function createDiscoverCollections(): Record<CollectionSort, DiscoverCollection> {
+  const createCollection = (): DiscoverCollection => ({
+    items: [],
+    page: 1,
+    hasMore: true,
+    loading: true,
+  });
+  return {
+    update: createCollection(),
+    new: createCollection(),
+    top: createCollection(),
+  };
+}
 
 export function App() {
   const locale = useMemo(() => detectLocale(), []);
@@ -62,11 +86,15 @@ export function App() {
   const [draftFilters, setDraftFilters] = useState(createDefaultMangaFilters);
   const [appliedFilters, setAppliedFilters] = useState(createDefaultMangaFilters);
 
-  const [discoverPage, setDiscoverPage] = useState(1);
-  const [discoverItems, setDiscoverItems] = useState<Manga[]>([]);
-  const [discoverHasMore, setDiscoverHasMore] = useState(true);
-  const [discoverLoading, setDiscoverLoading] = useState(true);
-  const [discoverError, setDiscoverError] = useState<string>();
+  const [discoverCollections, setDiscoverCollections] = useState(createDiscoverCollections);
+  const discoverLoadsRef = useRef(new Map<string, Promise<void>>());
+  const {
+    items: discoverItems,
+    page: discoverPage,
+    hasMore: discoverHasMore,
+    loading: discoverLoading,
+    error: discoverError,
+  } = discoverCollections[sort];
 
   const [searchPage, setSearchPage] = useState(1);
   const [searchItems, setSearchItems] = useState<Manga[]>([]);
@@ -140,8 +168,12 @@ export function App() {
     [appliedFilters, searchItems],
   );
   const allLoadedItems = useMemo(
-    () => deduplicateManga([...discoverItems, ...searchItems]),
-    [discoverItems, searchItems],
+    () =>
+      deduplicateManga([
+        ...COLLECTION_SORTS.flatMap((order) => discoverCollections[order].items),
+        ...searchItems,
+      ]),
+    [discoverCollections, searchItems],
   );
   const favorites = useMemo(() => favoriteEntries.map((entry) => entry.mangaId), [favoriteEntries]);
   const favoriteItems = useMemo(
@@ -192,23 +224,48 @@ export function App() {
   }, [favoriteItems, favorites, libraryPage, loadFavoriteMetadata]);
 
   const loadDiscover = useCallback(
-    async (nextPage: number, append: boolean, order: CollectionSort) => {
-      setDiscoverLoading(true);
-      setDiscoverError(undefined);
-      try {
-        const result = await getCollection(nextPage, order, COLLECTION_PAGE_SIZE);
-        updateHistoryCatalog(result);
-        setHistory(getHistory());
-        setDiscoverItems((current) =>
-          append ? deduplicateManga([...current, ...result]) : result,
-        );
-        setDiscoverPage(nextPage);
-        setDiscoverHasMore(result.length >= COLLECTION_PAGE_SIZE);
-      } catch (caught: unknown) {
-        setDiscoverError(caught instanceof Error ? caught.message : String(caught));
-      } finally {
-        setDiscoverLoading(false);
-      }
+    (nextPage: number, append: boolean, order: CollectionSort): Promise<void> => {
+      const loadKey = `${order}:${nextPage}`;
+      const existingLoad = discoverLoadsRef.current.get(loadKey);
+      if (existingLoad) return existingLoad;
+
+      const load = (async () => {
+        setDiscoverCollections((current) => ({
+          ...current,
+          [order]: { ...current[order], loading: true, error: undefined },
+        }));
+        try {
+          const result = await getCollection(nextPage, order, COLLECTION_PAGE_SIZE);
+          updateHistoryCatalog(result);
+          setHistory(getHistory());
+          if (nextPage === 1 && order !== 'update') preloadCollectionCovers(result);
+          setDiscoverCollections((current) => ({
+            ...current,
+            [order]: {
+              items: append ? deduplicateManga([...current[order].items, ...result]) : result,
+              page: nextPage,
+              hasMore: result.length >= COLLECTION_PAGE_SIZE,
+              loading: false,
+            },
+          }));
+        } catch (caught: unknown) {
+          setDiscoverCollections((current) => ({
+            ...current,
+            [order]: {
+              ...current[order],
+              loading: false,
+              error: caught instanceof Error ? caught.message : String(caught),
+            },
+          }));
+        }
+      })();
+      discoverLoadsRef.current.set(loadKey, load);
+      void load.finally(() => {
+        if (discoverLoadsRef.current.get(loadKey) === load) {
+          discoverLoadsRef.current.delete(loadKey);
+        }
+      });
+      return load;
     },
     [],
   );
@@ -258,14 +315,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // API取得は初期表示データを外部システムから読み込むためのEffect。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadDiscover(1, false, 'update');
+    // 3タブを同時に温め、以降のタブ切り替えでは取得待ちを発生させない。
+    COLLECTION_SORTS.forEach((order) => void loadDiscover(1, false, order));
   }, [loadDiscover]);
 
   useEffect(() => {
     // 旧保存形式の履歴は、実データを取得できるまで仮の作品情報を表示しない。
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void restoreHistoryMetadata();
   }, [restoreHistoryMetadata]);
 
@@ -514,13 +569,21 @@ export function App() {
           <>
             <PageHeading title={t('discover')} hint={t('libraryHint')} eyebrow="YOUR READING ROOM">
               <div className="sort-tabs" role="group">
-                {(['update', 'new', 'top'] as CollectionSort[]).map((value) => (
+                {COLLECTION_SORTS.map((value) => (
                   <button
                     key={value}
                     className={sort === value ? 'active' : ''}
                     onClick={() => {
+                      if (sort === value) return;
                       setSort(value);
-                      void loadDiscover(1, false, value);
+                      const collection = discoverCollections[value];
+                      if (
+                        collection.items.length === 0 &&
+                        !collection.loading &&
+                        !collection.error
+                      ) {
+                        void loadDiscover(1, false, value);
+                      }
                     }}
                   >
                     {t(value === 'update' ? 'updated' : value === 'new' ? 'newest' : 'popular')}
@@ -761,6 +824,15 @@ function MangaResults({
 
 function deduplicateManga(items: readonly Manga[]): Manga[] {
   return [...new Map(items.map((manga) => [manga.id, manga])).values()];
+}
+
+function preloadCollectionCovers(items: readonly Manga[]): void {
+  for (const manga of items.slice(0, BACKGROUND_COVER_PRELOAD_COUNT)) {
+    const image = new Image();
+    image.decoding = 'async';
+    image.fetchPriority = 'low';
+    image.src = manga.cover;
+  }
 }
 
 function mangaFromReadingProgress(entry: ReadingProgress): Manga {
