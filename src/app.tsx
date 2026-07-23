@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   getChapters,
-  getCollection,
   getManga,
   searchManga,
   type Chapter,
@@ -18,6 +17,7 @@ import { MangaCard } from './components/manga-card';
 import { ChapterUpdatesPanel, ReadingHistoryPanel } from './components/reading-dashboard';
 import { Reader } from './components/reader';
 import { createTranslator, detectLocale } from './i18n';
+import { COLLECTION_SORTS, useDiscoverCollections } from './hooks/use-discover-collections';
 import {
   createDefaultMangaFilters,
   createMangaSearchRequest,
@@ -48,32 +48,7 @@ import {
 type Screen = 'library' | 'detail' | 'reader';
 const NAVIGATION_STATE_KEY = 'nMgramScreen';
 const NAVIGATION_PAGE_STATE_KEY = 'nMgramLibraryPage';
-const COLLECTION_PAGE_SIZE = 24;
 const SEARCH_PAGE_SIZE = 100;
-const COLLECTION_SORTS = ['update', 'new', 'top'] as const satisfies readonly CollectionSort[];
-const BACKGROUND_COVER_PRELOAD_COUNT = 12;
-
-interface DiscoverCollection {
-  items: Manga[];
-  page: number;
-  hasMore: boolean;
-  loading: boolean;
-  error?: string;
-}
-
-function createDiscoverCollections(): Record<CollectionSort, DiscoverCollection> {
-  const createCollection = (): DiscoverCollection => ({
-    items: [],
-    page: 1,
-    hasMore: true,
-    loading: true,
-  });
-  return {
-    update: createCollection(),
-    new: createCollection(),
-    top: createCollection(),
-  };
-}
 
 export function App() {
   const locale = useMemo(() => detectLocale(), []);
@@ -85,14 +60,25 @@ export function App() {
   const [query, setQuery] = useState('');
   const [draftFilters, setDraftFilters] = useState(createDefaultMangaFilters);
   const [appliedFilters, setAppliedFilters] = useState(createDefaultMangaFilters);
+  const [history, setHistory] = useState(getHistory);
 
-  const [discoverCollections, setDiscoverCollections] = useState(createDiscoverCollections);
-  const discoverLoadsRef = useRef(new Map<string, Promise<void>>());
+  const handleDiscoverLoaded = useCallback((items: Manga[]) => {
+    updateHistoryCatalog(items);
+    setHistory(getHistory());
+  }, []);
+  const {
+    collections: discoverCollections,
+    load: loadDiscover,
+    prefetch: prefetchDiscover,
+    revealPrefetched: revealPrefetchedDiscover,
+  } = useDiscoverCollections(handleDiscoverLoaded);
   const {
     items: discoverItems,
     page: discoverPage,
     hasMore: discoverHasMore,
     loading: discoverLoading,
+    prefetchedPage: discoverPrefetchedPage,
+    prefetchError: discoverPrefetchError,
     error: discoverError,
   } = discoverCollections[sort];
 
@@ -111,7 +97,6 @@ export function App() {
   const [favoriteCatalogLoading, setFavoriteCatalogLoading] = useState(false);
   const [favoriteCatalogFailures, setFavoriteCatalogFailures] = useState(0);
   const favoriteAttemptedIdsRef = useRef(new Set<number>());
-  const [history, setHistory] = useState(getHistory);
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState(initialLibrary.lastUpdateCheckAt);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateCheckFailures, setUpdateCheckFailures] = useState(0);
@@ -223,53 +208,6 @@ export function App() {
     void loadFavoriteMetadata(missingIds);
   }, [favoriteItems, favorites, libraryPage, loadFavoriteMetadata]);
 
-  const loadDiscover = useCallback(
-    (nextPage: number, append: boolean, order: CollectionSort): Promise<void> => {
-      const loadKey = `${order}:${nextPage}`;
-      const existingLoad = discoverLoadsRef.current.get(loadKey);
-      if (existingLoad) return existingLoad;
-
-      const load = (async () => {
-        setDiscoverCollections((current) => ({
-          ...current,
-          [order]: { ...current[order], loading: true, error: undefined },
-        }));
-        try {
-          const result = await getCollection(nextPage, order, COLLECTION_PAGE_SIZE);
-          updateHistoryCatalog(result);
-          setHistory(getHistory());
-          if (nextPage === 1 && order !== 'update') preloadCollectionCovers(result);
-          setDiscoverCollections((current) => ({
-            ...current,
-            [order]: {
-              items: append ? deduplicateManga([...current[order].items, ...result]) : result,
-              page: nextPage,
-              hasMore: result.length >= COLLECTION_PAGE_SIZE,
-              loading: false,
-            },
-          }));
-        } catch (caught: unknown) {
-          setDiscoverCollections((current) => ({
-            ...current,
-            [order]: {
-              ...current[order],
-              loading: false,
-              error: caught instanceof Error ? caught.message : String(caught),
-            },
-          }));
-        }
-      })();
-      discoverLoadsRef.current.set(loadKey, load);
-      void load.finally(() => {
-        if (discoverLoadsRef.current.get(loadKey) === load) {
-          discoverLoadsRef.current.delete(loadKey);
-        }
-      });
-      return load;
-    },
-    [],
-  );
-
   const loadSearch = useCallback(
     async (nextPage: number, append: boolean, filters: MangaFilters) => {
       setSearchLoading(true);
@@ -315,12 +253,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // 3タブを同時に温め、以降のタブ切り替えでは取得待ちを発生させない。
-    COLLECTION_SORTS.forEach((order) => void loadDiscover(1, false, order));
-  }, [loadDiscover]);
-
-  useEffect(() => {
     // 旧保存形式の履歴は、実データを取得できるまで仮の作品情報を表示しない。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void restoreHistoryMetadata();
   }, [restoreHistoryMetadata]);
 
@@ -582,7 +516,7 @@ export function App() {
                         !collection.loading &&
                         !collection.error
                       ) {
-                        void loadDiscover(1, false, value);
+                        void loadDiscover(1, value);
                       }
                     }}
                   >
@@ -596,12 +530,18 @@ export function App() {
               loadedCount={discoverItems.length}
               loading={discoverLoading}
               error={discoverError}
-              hasMore={discoverHasMore}
+              canLoadMore={Boolean(discoverPrefetchedPage)}
+              loadMoreError={discoverHasMore ? discoverPrefetchError : undefined}
               favorites={favorites}
               onOpen={(manga) => void openManga(manga)}
               onFavorite={updateFavorite}
-              onRetry={() => void loadDiscover(discoverPage, false, sort)}
-              onLoadMore={() => void loadDiscover(discoverPage + 1, true, sort)}
+              onRetry={() => void loadDiscover(discoverPage, sort)}
+              onRetryLoadMore={() => void prefetchDiscover(discoverPage + 1, sort)}
+              onLoadMore={() => {
+                if (discoverPrefetchedPage) {
+                  revealPrefetchedDiscover(sort, discoverPrefetchedPage);
+                }
+              }}
               t={t}
             />
           </>
@@ -757,11 +697,14 @@ interface MangaResultsProps {
   loadedCount: number;
   loading: boolean;
   error?: string;
-  hasMore: boolean;
+  hasMore?: boolean;
+  canLoadMore?: boolean;
+  loadMoreError?: string;
   favorites: number[];
   onOpen: (manga: Manga) => void;
   onFavorite: (manga: Manga) => void;
   onRetry: () => void;
+  onRetryLoadMore?: () => void;
   onLoadMore: () => void;
   t: ReturnType<typeof createTranslator>;
 }
@@ -772,13 +715,17 @@ function MangaResults({
   loading,
   error,
   hasMore,
+  canLoadMore,
+  loadMoreError,
   favorites,
   onOpen,
   onFavorite,
   onRetry,
+  onRetryLoadMore,
   onLoadMore,
   t,
 }: MangaResultsProps) {
+  const loadMoreReady = canLoadMore ?? hasMore ?? false;
   return (
     <>
       {error && (
@@ -813,7 +760,13 @@ function MangaResults({
           {t('loading')}
         </div>
       )}
-      {!loading && !error && loadedCount > 0 && hasMore && (
+      {!loading && !error && loadedCount > 0 && loadMoreError && onRetryLoadMore && (
+        <div className="status-panel error-panel">
+          <p>{loadMoreError}</p>
+          <button onClick={onRetryLoadMore}>{t('retry')}</button>
+        </div>
+      )}
+      {!loading && !error && loadedCount > 0 && loadMoreReady && (
         <button className="load-more" onClick={onLoadMore}>
           {t('loadMore')}
         </button>
@@ -824,15 +777,6 @@ function MangaResults({
 
 function deduplicateManga(items: readonly Manga[]): Manga[] {
   return [...new Map(items.map((manga) => [manga.id, manga])).values()];
-}
-
-function preloadCollectionCovers(items: readonly Manga[]): void {
-  for (const manga of items.slice(0, BACKGROUND_COVER_PRELOAD_COUNT)) {
-    const image = new Image();
-    image.decoding = 'async';
-    image.fetchPriority = 'low';
-    image.src = manga.cover;
-  }
 }
 
 function mangaFromReadingProgress(entry: ReadingProgress): Manga {

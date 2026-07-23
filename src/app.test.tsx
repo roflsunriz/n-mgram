@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCollection, searchManga } from './api/client';
 import type { Manga } from './api/client';
@@ -28,6 +28,14 @@ const restoredManga: Manga = {
   hidden: 0,
   magazines: '',
 };
+
+function createMangaPage(startId: number, count = 24): Manga[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...restoredManga,
+    id: startId + index,
+    name: `作品 ${startId + index}`,
+  }));
+}
 
 vi.mock('./api/client', () => ({
   getCollection: vi.fn(async () => []),
@@ -216,6 +224,41 @@ describe('App library pages', () => {
 
     expect(vi.mocked(getCollection).mock.calls.filter((call) => call[1] === 'new')).toHaveLength(1);
     resolveNewest?.([]);
+  });
+
+  it('shows Load more only after the next Discover page is ready and reveals it without waiting', async () => {
+    let resolveSecondPage: ((items: Manga[]) => void) | undefined;
+    let resolveThirdPage: ((items: Manga[]) => void) | undefined;
+    vi.mocked(getCollection).mockImplementation((page, order) => {
+      if (order !== 'update') return Promise.resolve([]);
+      if (page === 1) return Promise.resolve(createMangaPage(100));
+      if (page === 2) {
+        return new Promise<Manga[]>((resolve) => {
+          resolveSecondPage = resolve;
+        });
+      }
+      return new Promise<Manga[]>((resolve) => {
+        resolveThirdPage = resolve;
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('manga-100')).toBeTruthy());
+    await waitFor(() => expect(getCollection).toHaveBeenCalledTimes(4));
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+
+    await act(async () => resolveSecondPage?.(createMangaPage(200)));
+    const loadMore = await screen.findByRole('button', { name: 'さらに読み込む' });
+    expect(getCollection).toHaveBeenCalledTimes(4);
+
+    fireEvent.click(loadMore);
+    expect(screen.getByTestId('manga-200')).toBeTruthy();
+    expect(document.querySelector('.loading-row')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'さらに読み込む' })).toBeNull();
+    await waitFor(() => expect(getCollection).toHaveBeenCalledTimes(5));
+    expect(getCollection).toHaveBeenLastCalledWith(3, 'update', 24);
+
+    await act(async () => resolveThirdPage?.([]));
   });
 
   it('prefetches chapter edges only when opening a manga without reading history', async () => {
