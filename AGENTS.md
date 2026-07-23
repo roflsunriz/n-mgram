@@ -6,7 +6,7 @@
 
 - アプリ名は `n-mgram`。
 - Tauri 2、React、TypeScript、Vite で構成するデスクトップ漫画ビューア。
-- 読み取り先は `https://business.wel.my.id` の非公式API、画像表示先は `https://ihlv1.xyz` 系CDN。
+- 読み取り先は `https://business.wel.my.id` の非公式API。APIが返すHTTPS画像URLはランタイム検証して表示する。
 - 認証系、更新系、管理系APIは実装・呼び出ししない。
 
 ## 開発コマンド

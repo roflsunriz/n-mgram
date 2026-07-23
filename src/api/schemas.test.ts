@@ -86,6 +86,44 @@ describe('API schemas', () => {
     expect(parsed[0]?.content).toEqual(['https://ihlv1.xyz/1.webp']);
   });
 
+  it('rewrites pages from the retired imfaclub CDN to the matching live ihlv1 host', () => {
+    const parsed = chapterListSchema.parse([
+      {
+        mid: 2053,
+        name: 'GHOST IN THE SHELL - THE HUMAN ALGORITHM - RAW',
+        chapter: 1,
+        content: ['https://s2.imfaclub.com/images/20200303/dfc8902340a3a2ac38bdea58f32eba2f00.jpg'],
+        time: '',
+        views: 0,
+      },
+    ]);
+    expect(parsed[0]?.content).toEqual([
+      'https://s2.ihlv1.xyz/images/20200303/dfc8902340a3a2ac38bdea58f32eba2f00.jpg',
+    ]);
+  });
+
+  it('accepts covers from the current jfimv2 CDN without changing their path', () => {
+    const cover = 'https://j4.jfimv2.xyz/images3/20250924/image_68d3b6fd10897.png';
+    const parsed = mangaSchema.parse({
+      id: 6286,
+      name: 'SEIRYAKU YORI AI WO ERANDA KEKKON',
+      cover,
+      lastChapter: '10',
+    });
+    expect(parsed.cover).toBe(cover);
+  });
+
+  it('does not rewrite a hostname that only resembles the retired CDN', () => {
+    const cover = 'https://imfaclub.com.example.invalid/cover.webp';
+    const parsed = mangaSchema.parse({
+      id: 1,
+      name: 'Lookalike host',
+      cover,
+      lastChapter: '1',
+    });
+    expect(parsed.cover).toBe(cover);
+  });
+
   it('removes the known translator recruitment image URL from chapters', () => {
     const parsed = chapterListSchema.parse([
       {

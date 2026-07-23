@@ -25,7 +25,31 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-const remoteImageUrl = z.string().refine(isHttpsUrl, 'HTTPS画像URLではありません');
+const LEGACY_IMAGE_HOST_SUFFIX = 'imfaclub.com';
+const CURRENT_IMAGE_HOST_SUFFIX = 'ihlv1.xyz';
+
+export function normalizeImageUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return value;
+    if (url.hostname === LEGACY_IMAGE_HOST_SUFFIX) {
+      url.hostname = CURRENT_IMAGE_HOST_SUFFIX;
+      return url.toString();
+    }
+    if (url.hostname.endsWith(`.${LEGACY_IMAGE_HOST_SUFFIX}`)) {
+      url.hostname = `${url.hostname.slice(0, -LEGACY_IMAGE_HOST_SUFFIX.length)}${CURRENT_IMAGE_HOST_SUFFIX}`;
+      return url.toString();
+    }
+  } catch {
+    return value;
+  }
+  return value;
+}
+
+const remoteImageUrl = z
+  .string()
+  .transform(normalizeImageUrl)
+  .refine(isHttpsUrl, 'HTTPS画像URLではありません');
 const metadataNumber = z
   .union([z.number(), z.string()])
   .nullish()
@@ -41,7 +65,9 @@ export function isBlockedImageUrl(value: string): boolean {
 
 const chapterContentSchema = z
   .array(z.string())
-  .transform((values) => values.filter((value) => isHttpsUrl(value) && !isBlockedImageUrl(value)));
+  .transform((values) =>
+    values.map(normalizeImageUrl).filter((value) => isHttpsUrl(value) && !isBlockedImageUrl(value)),
+  );
 
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {

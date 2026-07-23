@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://business.wel.my.id https://api.github.com; img-src 'self' asset: http://asset.localhost https://ihlv1.xyz https://*.ihlv1.xyz data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://business.wel.my.id https://api.github.com; img-src 'self' asset: http://asset.localhost https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
     },
     "windows": [
       {
