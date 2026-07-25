@@ -528,7 +528,7 @@ export function Reader({
               aria-label={t('chapters')}
             >
               {chapters.map((item, index) => (
-                <option key={`${item.mid}-${item.chapter}`} value={index}>
+                <option key={`${item.mid}-${item.chapter}-${index}`} value={index}>
                   {t('chapter', { number: item.chapter })}
                 </option>
               ))}

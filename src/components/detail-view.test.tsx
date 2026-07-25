@@ -65,4 +65,36 @@ describe('DetailView chapter order', () => {
     fireEvent.click(screen.getByRole('button', { name: /第1話/ }));
     expect(onRead).toHaveBeenCalledWith(0);
   });
+
+  it('renders decimal labels without collapsing them and reverses their sorted order', () => {
+    const decimalChapters: Chapter[] = ['1.01', '1.1', '1.2'].map((chapter) => ({
+      mid: 1,
+      name: manga.name,
+      chapter,
+      content: [`https://ihlv1.xyz/${chapter}.webp`],
+      time: '',
+      views: 0,
+    }));
+
+    render(
+      <DetailView
+        manga={manga}
+        chapters={decimalChapters}
+        favorite={false}
+        loading={false}
+        onBack={vi.fn()}
+        onFavorite={vi.fn()}
+        onRead={vi.fn()}
+        onRetry={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    const chapterLabels = () =>
+      [...document.querySelectorAll('.chapter-number')].map((element) => element.textContent);
+    expect(chapterLabels()).toEqual(['第1.2話', '第1.1話', '第1.01話']);
+
+    fireEvent.click(screen.getByTestId('chapter-order-toggle'));
+    expect(chapterLabels()).toEqual(['第1.01話', '第1.1話', '第1.2話']);
+  });
 });

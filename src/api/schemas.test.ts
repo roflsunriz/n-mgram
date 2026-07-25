@@ -86,6 +86,21 @@ describe('API schemas', () => {
     expect(parsed[0]?.content).toEqual(['https://ihlv1.xyz/1.webp']);
   });
 
+  it('preserves decimal chapter labels exactly instead of normalizing them', () => {
+    const parsed = chapterListSchema.parse([
+      {
+        mid: 1,
+        name: 'Decimal chapters',
+        chapter: '1.01',
+        content: ['https://ihlv1.xyz/1.01.webp'],
+        time: '',
+        views: 0,
+      },
+    ]);
+
+    expect(parsed[0]?.chapter).toBe('1.01');
+  });
+
   it('rewrites pages from the retired imfaclub CDN to the matching live ihlv1 host', () => {
     const parsed = chapterListSchema.parse([
       {

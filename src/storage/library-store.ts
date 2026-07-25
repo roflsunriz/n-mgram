@@ -1,4 +1,10 @@
 import type { Manga } from '../api/client';
+import {
+  compareChapterNumbers,
+  isChapterNumber,
+  maxChapterNumber,
+  type ChapterNumber,
+} from '../api/chapter-number';
 
 const STORAGE_KEY = 'n-mgram.library';
 const STORAGE_VERSION = 3;
@@ -12,10 +18,10 @@ export interface ReadingProgress {
   mangaId: number;
   title: string;
   cover: string;
-  chapter: number;
+  chapter: ChapterNumber;
   page: number;
   pageCount: number;
-  latestChapter: number;
+  latestChapter: ChapterNumber;
   updatedAt: string;
 }
 
@@ -30,7 +36,7 @@ export interface StoredLibrary {
 
 interface LegacyReadingProgress {
   mangaId: number;
-  chapter: number;
+  chapter: ChapterNumber;
   page: number;
   updatedAt: string;
 }
@@ -155,12 +161,12 @@ function isReadingProgress(value: unknown): value is ReadingProgress {
     Number(candidate.mangaId) > 0 &&
     typeof candidate.title === 'string' &&
     typeof candidate.cover === 'string' &&
-    isNonNegativeNumber(candidate.chapter) &&
+    isChapterNumber(candidate.chapter) &&
     Number.isInteger(candidate.page) &&
     Number(candidate.page) >= 0 &&
     Number.isInteger(candidate.pageCount) &&
     Number(candidate.pageCount) >= 0 &&
-    isNonNegativeNumber(candidate.latestChapter) &&
+    isChapterNumber(candidate.latestChapter) &&
     typeof candidate.updatedAt === 'string'
   );
 }
@@ -171,15 +177,11 @@ function isLegacyProgress(value: unknown): value is LegacyReadingProgress {
   return (
     Number.isInteger(candidate.mangaId) &&
     Number(candidate.mangaId) > 0 &&
-    isNonNegativeNumber(candidate.chapter) &&
+    isChapterNumber(candidate.chapter) &&
     Number.isInteger(candidate.page) &&
     Number(candidate.page) >= 0 &&
     typeof candidate.updatedAt === 'string'
   );
-}
-
-function isNonNegativeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function saveLibrary(value: StoredLibrary): void {
@@ -204,7 +206,11 @@ export function saveProgress(progress: ReadingProgressUpdate): ReadingProgress[]
   const current = library.history[String(progress.mangaId)];
   library.history[String(progress.mangaId)] = {
     ...progress,
-    latestChapter: Math.max(progress.chapter, progress.latestChapter, current?.latestChapter ?? 0),
+    latestChapter: maxChapterNumber(
+      progress.chapter,
+      progress.latestChapter,
+      current?.latestChapter ?? 0,
+    ),
     updatedAt: new Date().toISOString(),
   };
   saveLibrary(library);
@@ -249,7 +255,10 @@ export function updateHistoryCatalog(
       ...entry,
       title: manga.name,
       cover: manga.cover,
-      latestChapter: Math.max(entry.latestChapter, latestChapter ?? entry.chapter),
+      latestChapter:
+        latestChapter === undefined
+          ? entry.latestChapter
+          : maxChapterNumber(entry.latestChapter, latestChapter),
     };
   }
   if (markCheckComplete) library.lastUpdateCheckAt = new Date().toISOString();
@@ -263,14 +272,13 @@ export function getProgressPercentage(progress: ReadingProgress): number {
 }
 
 export function hasNewChapter(progress: ReadingProgress): boolean {
-  return progress.latestChapter > progress.chapter;
+  return compareChapterNumbers(progress.latestChapter, progress.chapter) > 0;
 }
 
 export function hasCompleteHistoryMetadata(progress: ReadingProgress): boolean {
   return progress.title.trim().length > 0 && progress.cover.trim().length > 0;
 }
 
-function parseChapterNumber(value: string): number | undefined {
-  const chapter = Number(value);
-  return Number.isFinite(chapter) && chapter >= 0 ? chapter : undefined;
+function parseChapterNumber(value: string): ChapterNumber | undefined {
+  return isChapterNumber(value) ? value : undefined;
 }

@@ -7,6 +7,7 @@ import {
   type CollectionSort,
   type Manga,
 } from './api/client';
+import { chapterNumbersEqual, maxChapterNumber } from './api/chapter-number';
 import { AdvancedSearch, type MetadataSuggestions } from './components/advanced-search';
 import { AppUpdaterPanel } from './components/app-updater-panel';
 import { DetailView } from './components/detail-view';
@@ -363,7 +364,7 @@ export function App() {
     (chapter: Chapter, readerPage: number) => {
       if (!selected) return;
       const latestChapter = chapters.reduce(
-        (latest, item) => Math.max(latest, item.chapter),
+        (latest, item) => maxChapterNumber(latest, item.chapter),
         chapter.chapter,
       );
       setHistory(
@@ -397,7 +398,7 @@ export function App() {
       ]);
       const chapterIndex = Math.max(
         0,
-        chapterList.findIndex((item) => item.chapter === entry.chapter),
+        chapterList.findIndex((item) => chapterNumbersEqual(item.chapter, entry.chapter)),
       );
       const chapter = chapterList[chapterIndex];
       const safePage = Math.min(

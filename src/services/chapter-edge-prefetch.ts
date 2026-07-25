@@ -1,4 +1,5 @@
 import type { Chapter } from '../api/client';
+import { compareChapterNumbers } from '../api/chapter-number';
 import { acquirePageImage } from './page-image-cache';
 
 const EDGE_PAGE_COUNT = 8;
@@ -9,8 +10,8 @@ export function getChapterEdgePageUrls(chapters: readonly Chapter[]): string[] {
   let oldest = chapters[0]!;
   let newest = chapters[0]!;
   for (const chapter of chapters.slice(1)) {
-    if (chapter.chapter < oldest.chapter) oldest = chapter;
-    if (chapter.chapter > newest.chapter) newest = chapter;
+    if (compareChapterNumbers(chapter.chapter, oldest.chapter) < 0) oldest = chapter;
+    if (compareChapterNumbers(chapter.chapter, newest.chapter) > 0) newest = chapter;
   }
 
   return [

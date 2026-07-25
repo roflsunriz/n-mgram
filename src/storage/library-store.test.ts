@@ -95,7 +95,7 @@ describe('library store', () => {
     const before = getProgress(7);
     const library = updateHistoryCatalog([manga], true);
     const updated = library.history['7'];
-    expect(updated).toMatchObject({ latestChapter: 5, cover: manga.cover });
+    expect(updated).toMatchObject({ latestChapter: '5', cover: manga.cover });
     expect(updated?.updatedAt).toBe(before?.updatedAt);
     expect(library.lastUpdateCheckAt).toBeTruthy();
     expect(updated && hasNewChapter(updated)).toBe(true);
@@ -106,6 +106,13 @@ describe('library store', () => {
     saveProgress(progress);
     expect(removeHistory(7)).toEqual([]);
     expect(loadLibrary().favorites).toEqual([{ mangaId: 7, title: '読んだ作品' }]);
+  });
+
+  it('keeps decimal chapter labels exact in reading history', () => {
+    saveProgress({ ...progress, chapter: '1.01', latestChapter: '1.2' });
+
+    expect(getProgress(7)).toMatchObject({ chapter: '1.01', latestChapter: '1.2' });
+    expect(hasNewChapter(getProgress(7)!)).toBe(true);
   });
 
   it('clears all history without deleting favorites', () => {

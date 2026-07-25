@@ -1,6 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { z, ZodError, type ZodType } from 'zod';
+import { compareChapterNumbers, isChapterNumber, type ChapterNumber } from './chapter-number';
 
 const API_BASE_URL = 'https://business.wel.my.id';
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -68,6 +69,11 @@ const chapterContentSchema = z
   .transform((values) =>
     values.map(normalizeImageUrl).filter((value) => isHttpsUrl(value) && !isBlockedImageUrl(value)),
   );
+
+const chapterNumberSchema = z
+  .union([z.number(), z.string()])
+  .refine(isChapterNumber, '有効な話数ではありません')
+  .transform(String);
 
 function decodeHtmlEntities(value: string): string {
   const namedEntities: Record<string, string> = {
@@ -146,7 +152,7 @@ export const chapterSchema = z
   .object({
     mid: z.number().int().positive(),
     name: z.string().min(1),
-    chapter: z.number().nonnegative(),
+    chapter: chapterNumberSchema,
     content: chapterContentSchema,
     time: z.string().default(''),
     views: z.number().default(0),
@@ -158,7 +164,16 @@ export const mangaListSchema = z.array(mangaSchema);
 export const chapterListSchema = z.array(chapterSchema);
 
 export type Manga = z.infer<typeof mangaSchema>;
-export type Chapter = z.infer<typeof chapterSchema>;
+export interface Chapter {
+  mid: number;
+  name: string;
+  chapter: ChapterNumber;
+  content: string[];
+  time: string;
+  views: number;
+  cover?: string;
+  [key: string]: unknown;
+}
 export type CollectionSort = 'new' | 'top' | 'update';
 export type MangaSearchStatus = 'Any' | 'Ongoing' | 'Completed';
 
@@ -329,7 +344,7 @@ export async function getChapters(id: number): Promise<Chapter[]> {
   const chapters = await requestJson(`/chapter/${encodeURIComponent(id)}`, chapterListSchema);
   return chapters
     .filter((chapter) => chapter.content.length > 0)
-    .sort((a, b) => a.chapter - b.chapter);
+    .sort((a, b) => compareChapterNumbers(a.chapter, b.chapter));
 }
 
 export function isBlockedImageDigest(digest: string): boolean {
