@@ -29,6 +29,7 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
 const ZOOM_STEP = 0.5;
+const WHEEL_ZOOM_SENSITIVITY = 0.0025;
 const SINGLE_PAGE_QUERY = '(max-width: 620px) and (orientation: portrait)';
 
 interface PointerPosition {
@@ -382,6 +383,7 @@ export function Reader({
         else onClose();
         return;
       }
+      if (event.isComposing || isKeyboardInputTarget(event.target)) return;
       if (event.ctrlKey && (event.key === '+' || event.key === '=' || event.key === 'Add')) {
         event.preventDefault();
         setZoomAt(zoomRef.current + ZOOM_STEP);
@@ -397,8 +399,32 @@ export function Reader({
         resetZoom();
         return;
       }
-      if (mode === 'paged' && event.key === 'ArrowLeft') changeSpread('next');
-      if (mode === 'paged' && event.key === 'ArrowRight') changeSpread('previous');
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+      const key = event.key.toLowerCase();
+      if (key === 'w' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        setZoomAt(zoomRef.current + ZOOM_STEP);
+        return;
+      }
+      if (key === 's' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        setZoomAt(zoomRef.current - ZOOM_STEP);
+        return;
+      }
+      if (key === 'q' || event.key === 'End') {
+        event.preventDefault();
+        resetZoom();
+        return;
+      }
+      if (mode === 'paged' && (key === 'a' || event.key === 'ArrowLeft')) {
+        event.preventDefault();
+        changeSpread('next');
+      }
+      if (mode === 'paged' && (key === 'd' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        changeSpread('previous');
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -583,7 +609,16 @@ export function Reader({
             <option value="height">{t('fitHeight')}</option>
             <option value="original">{t('original')}</option>
           </select>
-          <div className="reader-zoom-controls" aria-label={t('zoom')}>
+          <div
+            className="reader-zoom-controls"
+            aria-label={t('zoom')}
+            title={t('zoomWheelHint')}
+            onWheel={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setZoomAt(zoomFromWheel(zoomRef.current, event.deltaY, event.deltaMode));
+            }}
+          >
             <button
               type="button"
               onClick={() => setZoomAt(zoomRef.current - ZOOM_STEP)}
@@ -643,7 +678,7 @@ export function Reader({
           if (!event.ctrlKey) return;
           event.preventDefault();
           setZoomAt(
-            zoomRef.current * Math.exp(-event.deltaY * 0.0025),
+            zoomFromWheel(zoomRef.current, event.deltaY, event.deltaMode),
             event.clientX,
             event.clientY,
           );
@@ -933,6 +968,26 @@ export function Reader({
 
 function clampZoom(zoom: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+function zoomFromWheel(currentZoom: number, deltaY: number, deltaMode: number): number {
+  const pixelDelta =
+    deltaY *
+    (deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 16
+      : deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? 800
+        : 1);
+  return currentZoom * Math.exp(-pixelDelta * WHEEL_ZOOM_SENSITIVITY);
+}
+
+function isKeyboardInputTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
 }
 
 function isCompactPortrait() {

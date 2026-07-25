@@ -137,6 +137,11 @@ describe('Reader', () => {
       );
     });
     expect(onProgress).toHaveBeenLastCalledWith(chapters[0], 1);
+
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(screen.getByText('1 / 3')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(screen.getByText('2–3 / 3')).toBeTruthy();
   });
 
   it('closes with Escape', () => {
@@ -412,7 +417,7 @@ describe('Reader', () => {
     );
   });
 
-  it('supports Windows-friendly zoom buttons and Ctrl-wheel trackpad zoom', () => {
+  it('smoothly zooms over the zoom control without taking over normal reading scroll', () => {
     render(
       <Reader
         manga={manga}
@@ -426,13 +431,20 @@ describe('Reader', () => {
     );
     const surface = screen.getByTestId('reader-zoom-surface');
     const stage = document.querySelector('.reader-stage')!;
+    const zoomControls = document.querySelector('.reader-zoom-controls')!;
 
     fireEvent.click(screen.getByRole('button', { name: '拡大' }));
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
     expect(screen.getByTestId('reader-zoom-reset').textContent).toBe('150%');
 
-    fireEvent.wheel(stage, { ctrlKey: true, deltaY: -100, clientX: 240, clientY: 200 });
+    fireEvent.wheel(stage, { deltaY: -100, clientX: 240, clientY: 200 });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
+
+    fireEvent.wheel(zoomControls, { deltaY: -40 });
     expect(Number(surface.style.getPropertyValue('--reader-zoom'))).toBeGreaterThan(1.5);
+
+    fireEvent.wheel(stage, { ctrlKey: true, deltaY: -100, clientX: 240, clientY: 200 });
+    expect(Number(surface.style.getPropertyValue('--reader-zoom'))).toBeGreaterThan(2);
 
     fireEvent.click(screen.getByTestId('reader-zoom-reset'));
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
@@ -443,6 +455,24 @@ describe('Reader', () => {
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
     fireEvent.keyDown(window, { key: '=', ctrlKey: true });
     fireEvent.keyDown(window, { key: '0', ctrlKey: true });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+
+    fireEvent.keyDown(window, { key: 'w' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('2');
+    fireEvent.keyDown(window, { key: 's' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1.5');
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+    fireEvent.keyDown(window, { key: 'w' });
+    fireEvent.keyDown(window, { key: 'q' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+    fireEvent.keyDown(window, { key: 'w' });
+    fireEvent.keyDown(window, { key: 'End' });
+    expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
+
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '章' }), { key: 'ArrowUp' });
     expect(surface.style.getPropertyValue('--reader-zoom')).toBe('1');
   });
 

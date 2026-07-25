@@ -62,6 +62,7 @@ const messages = {
     zoomIn: '拡大',
     zoomOut: '縮小',
     resetZoom: 'ズームを100%に戻す',
+    zoomWheelHint: 'ここでホイールすると無段階に拡大・縮小',
     pageStatus: '{current} / {total}',
     noResults: '作品が見つかりませんでした',
     noChapters: '閲覧できる章がありません',
@@ -75,7 +76,7 @@ const messages = {
     views: '{count} 閲覧',
     updatedAt: '更新 {date}',
     readerHelp:
-      '右綴じ：左右タップ／スワイプでページ移動、縦読みは左右スワイプで章移動、先頭を下引きで再読み込み、拡大中はドラッグで移動',
+      '右綴じ：左右タップ／スワイプまたはA/Dでページ移動、W/S・上下キーで拡大縮小、Q・Endで100%復帰、倍率欄のホイールで無段階ズーム',
     enterFullscreen: '全画面表示（F11）',
     exitFullscreen: '全画面表示を終了（F11）',
     close: '閉じる',
@@ -220,6 +221,7 @@ const messages = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     resetZoom: 'Reset zoom to 100%',
+    zoomWheelHint: 'Scroll here for smooth zoom',
     pageStatus: '{current} / {total}',
     noResults: 'No titles found',
     noChapters: 'No readable chapters',
@@ -233,7 +235,7 @@ const messages = {
     views: '{count} views',
     updatedAt: 'Updated {date}',
     readerHelp:
-      'Right-bound: tap or swipe to turn pages; swipe sideways to change chapters in scroll mode; pull down at the top to reload; drag to pan while zoomed',
+      'Right-bound: tap, swipe, or A/D to turn pages; use W/S or Up/Down to zoom; Q or End resets to 100%; scroll over the zoom control for smooth zoom',
     enterFullscreen: 'Enter fullscreen (F11)',
     exitFullscreen: 'Exit fullscreen (F11)',
     close: 'Close',

@@ -5,6 +5,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .setup(|_app| {
+            #[cfg(target_os = "windows")]
+            {
+                use tauri_plugin_window_state::StateFlags;
+
+                _app.handle().plugin(
+                    tauri_plugin_window_state::Builder::default()
+                        .with_state_flags(
+                            StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED,
+                        )
+                        .build(),
+                )?;
+            }
             #[cfg(desktop)]
             _app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
