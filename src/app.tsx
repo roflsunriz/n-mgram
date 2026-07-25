@@ -7,7 +7,11 @@ import {
   type CollectionSort,
   type Manga,
 } from './api/client';
-import { chapterNumbersEqual, maxChapterNumber } from './api/chapter-number';
+import {
+  findChapterNumberIndex,
+  maxChapterNumber,
+  restoreTruncatedChapterNumbers,
+} from './api/chapter-number';
 import { AdvancedSearch, type MetadataSuggestions } from './components/advanced-search';
 import { AppUpdaterPanel } from './components/app-updater-panel';
 import { DetailView } from './components/detail-view';
@@ -332,7 +336,11 @@ export function App() {
     if (addHistoryEntry) navigateForward('detail');
     else setScreen('detail');
     try {
-      const [detail, chapterList] = await Promise.all([getManga(manga.id), getChapters(manga.id)]);
+      const [detail, fetchedChapters] = await Promise.all([
+        getManga(manga.id),
+        getChapters(manga.id),
+      ]);
+      const chapterList = restoreTruncatedChapterNumbers(fetchedChapters, detail.lastChapter);
       setSelected(detail);
       setChapters(chapterList);
       if (!hasReadingHistory) void prefetchChapterEdges(chapterList);
@@ -392,14 +400,12 @@ export function App() {
     setDetailLoading(true);
     setDetailError(undefined);
     try {
-      const [detail, chapterList] = await Promise.all([
+      const [detail, fetchedChapters] = await Promise.all([
         getManga(entry.mangaId),
         getChapters(entry.mangaId),
       ]);
-      const chapterIndex = Math.max(
-        0,
-        chapterList.findIndex((item) => chapterNumbersEqual(item.chapter, entry.chapter)),
-      );
+      const chapterList = restoreTruncatedChapterNumbers(fetchedChapters, detail.lastChapter);
+      const chapterIndex = Math.max(0, findChapterNumberIndex(chapterList, entry.chapter));
       const chapter = chapterList[chapterIndex];
       const safePage = Math.min(
         Math.max(entry.page, 0),

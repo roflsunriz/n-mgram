@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCollection, searchManga } from './api/client';
+import { getChapters, getCollection, getManga, searchManga } from './api/client';
 import type { Manga } from './api/client';
 import { App } from './app';
 import { prefetchChapterEdges } from './services/chapter-edge-prefetch';
@@ -93,6 +93,24 @@ function createStorage(): Storage {
 
 describe('App library pages', () => {
   beforeEach(() => {
+    vi.mocked(getManga).mockResolvedValue(restoredManga);
+    vi.mocked(getChapters).mockResolvedValue([
+      {
+        mid: 7,
+        name: '復元された作品',
+        chapter: 3,
+        content: [
+          'https://ihlv1.xyz/3-1.webp',
+          'https://ihlv1.xyz/3-2.webp',
+          'https://ihlv1.xyz/3-3.webp',
+          'https://ihlv1.xyz/3-4.webp',
+          'https://ihlv1.xyz/3-5.webp',
+          'https://ihlv1.xyz/3-6.webp',
+        ],
+        time: '',
+        views: 0,
+      },
+    ]);
     vi.stubGlobal('localStorage', createStorage());
     vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
     Object.defineProperty(window.navigator, 'language', { value: 'ja-JP', configurable: true });
@@ -283,6 +301,37 @@ describe('App library pages', () => {
     );
 
     expect(prefetchChapterEdges).not.toHaveBeenCalled();
+  });
+
+  it('restores truncated decimal chapter labels on the manga detail screen', async () => {
+    const decimalManga = {
+      ...restoredManga,
+      id: 8,
+      name: '小数話の作品',
+      lastChapter: '3.2',
+    };
+    vi.mocked(getCollection).mockResolvedValueOnce([decimalManga]);
+    vi.mocked(getManga).mockResolvedValueOnce(decimalManga);
+    vi.mocked(getChapters).mockResolvedValueOnce(
+      [1, 1, 1, 2, 2, 3, 3].map((chapter, index) => ({
+        mid: 8,
+        name: decimalManga.name,
+        chapter,
+        content: [`https://ihlv1.xyz/${index}.webp`],
+        time: '',
+        views: 0,
+      })),
+    );
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('manga-8')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('manga-8').querySelector('.cover-button')!);
+
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll('.chapter-number')].map((element) => element.textContent),
+      ).toEqual(['第3.2話', '第3.1話', '第2.2話', '第2.1話', '第1.3話', '第1.2話', '第1.1話']),
+    );
   });
 
   it('opens a history entry directly at the saved chapter and lets browser back return to history', async () => {

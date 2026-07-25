@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import type { Chapter, Manga } from '../api/client';
-import { chapterNumbersEqual, compareChapterNumbers } from '../api/chapter-number';
+import {
+  chapterNumbersEqual,
+  compareChapterNumbers,
+  findChapterNumberIndex,
+} from '../api/chapter-number';
 import type { MessageKey } from '../i18n';
 import type { ReadingProgress } from '../storage/library-store';
 import { ArrowLeftIcon, HeartIcon } from './icons';
@@ -34,11 +38,11 @@ export function DetailView({
 }: Props) {
   const [newestFirst, setNewestFirst] = useState(true);
   const resumeIndex = progress
-    ? Math.max(
-        0,
-        chapters.findIndex((item) => chapterNumbersEqual(item.chapter, progress.chapter)),
-      )
+    ? Math.max(0, findChapterNumberIndex(chapters, progress.chapter))
     : 0;
+  const progressChapter = progress
+    ? (chapters[resumeIndex]?.chapter ?? progress.chapter)
+    : undefined;
   const genres = manga.genres
     .split(',')
     .map((item) => item.trim())
@@ -112,8 +116,9 @@ export function DetailView({
             const chapterIndex = chapters.indexOf(chapter);
             const completed =
               progress &&
-              (compareChapterNumbers(chapter.chapter, progress.chapter) < 0 ||
-                (chapterNumbersEqual(chapter.chapter, progress.chapter) &&
+              progressChapter !== undefined &&
+              (compareChapterNumbers(chapter.chapter, progressChapter) < 0 ||
+                (chapterNumbersEqual(chapter.chapter, progressChapter) &&
                   progress.page >= chapter.content.length - 1));
             return (
               <button
