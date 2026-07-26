@@ -116,7 +116,7 @@ describe('Reader', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'ページ読み' }));
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
     await waitFor(() =>
       expect(document.querySelector('.spread-page-right')?.getAttribute('src')).toBe(
         'https://ihlv1.xyz/1.webp',
@@ -125,23 +125,41 @@ describe('Reader', () => {
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
 
-    expect(screen.getByText('2–3 / 3')).toBeTruthy();
+    expect(screen.getByText('3 / 3')).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByRole('img', { name: '2' })).toBeTruthy();
       expect(screen.getByRole('img', { name: '3' })).toBeTruthy();
       expect(document.querySelector('.spread-page-right')?.getAttribute('src')).toBe(
-        'https://ihlv1.xyz/2.webp',
-      );
-      expect(document.querySelector('.spread-page-left')?.getAttribute('src')).toBe(
         'https://ihlv1.xyz/3.webp',
       );
+      expect(screen.getByTestId('reader-end-page')).toBeTruthy();
     });
-    expect(onProgress).toHaveBeenLastCalledWith(chapters[0], 1);
+    expect(screen.getByText('コンテンツの終わり')).toBeTruthy();
+    expect(screen.getByText('1/1章')).toBeTruthy();
+    expect(screen.getByText('100% 読了')).toBeTruthy();
+    expect(onProgress).toHaveBeenLastCalledWith(chapters[0], 2);
 
     fireEvent.keyDown(window, { key: 'd' });
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'a' });
-    expect(screen.getByText('2–3 / 3')).toBeTruthy();
+    expect(screen.getByText('3 / 3')).toBeTruthy();
+  });
+
+  it('does not append an end page when the chapter already has an even page count', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={multipleChapters}
+        initialChapter={1}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    expect(screen.getByText('1–2 / 2')).toBeTruthy();
+    expect(screen.queryByTestId('reader-end-page')).toBeNull();
   });
 
   it('closes with Escape', () => {
@@ -235,70 +253,58 @@ describe('Reader', () => {
     act(() => vi.advanceTimersByTime(2_500));
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
-    expect(screen.getByText('2–3 / 3')).toBeTruthy();
+    expect(screen.getByText('3 / 3')).toBeTruthy();
     expect(reader.classList.contains('controls-hidden')).toBe(true);
     expect(help.classList.contains('is-hidden')).toBe(true);
+    expect(document.querySelector('.reader-chapter-footer-paged')?.classList).toContain(
+      'is-hidden',
+    );
 
     const previousPage = screen.getByRole('button', { name: '前へ' });
     fireEvent.focus(previousPage);
     fireEvent.click(previousPage);
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
     expect(reader.classList.contains('controls-hidden')).toBe(true);
   });
 
-  it('uses one page in compact portrait and advances with a left swipe', async () => {
-    const originalMatchMedia = window.matchMedia;
-    Object.defineProperty(window, 'matchMedia', {
-      configurable: true,
-      value: vi.fn().mockReturnValue({
-        matches: true,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }),
+  it('keeps two-page spreads in compact layouts and advances with a left swipe', async () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: '1' })).toBeTruthy();
+      expect(screen.getByRole('img', { name: '2' })).toBeTruthy();
     });
 
-    try {
-      render(
-        <Reader
-          manga={manga}
-          chapters={chapters}
-          initialChapter={0}
-          initialPage={0}
-          onClose={vi.fn()}
-          onProgress={vi.fn()}
-          t={createTranslator('ja')}
-        />,
-      );
+    const stage = document.querySelector('.reader-stage');
+    expect(stage).toBeTruthy();
+    fireEvent.pointerDown(stage!, {
+      pointerId: 1,
+      isPrimary: true,
+      clientX: 240,
+      clientY: 100,
+    });
+    fireEvent.pointerUp(stage!, {
+      pointerId: 1,
+      isPrimary: true,
+      clientX: 120,
+      clientY: 100,
+    });
 
-      fireEvent.click(screen.getByTestId('reader-mode-paged'));
-      expect(document.querySelector('.reader-spread')?.classList.contains('is-single-page')).toBe(
-        true,
-      );
-      expect(screen.getByText('1 / 3')).toBeTruthy();
-
-      const stage = document.querySelector('.reader-stage');
-      expect(stage).toBeTruthy();
-      fireEvent.pointerDown(stage!, {
-        pointerId: 1,
-        isPrimary: true,
-        clientX: 240,
-        clientY: 100,
-      });
-      fireEvent.pointerUp(stage!, {
-        pointerId: 1,
-        isPrimary: true,
-        clientX: 120,
-        clientY: 100,
-      });
-
-      expect(screen.getByText('2 / 3')).toBeTruthy();
-      await waitFor(() => expect(screen.getByRole('img', { name: '2' })).toBeTruthy());
-    } finally {
-      Object.defineProperty(window, 'matchMedia', {
-        configurable: true,
-        value: originalMatchMedia,
-      });
-    }
+    expect(screen.getByText('3 / 3')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('img', { name: '3' })).toBeTruthy());
+    expect(screen.getByTestId('reader-end-page')).toBeTruthy();
   });
 
   it('pinch-zooms around the two touch pointers without turning the page', async () => {
@@ -350,7 +356,7 @@ describe('Reader', () => {
         top: 170,
       }),
     );
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
 
     fireEvent.pointerUp(stage, { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 200 });
     fireEvent.pointerUp(stage, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200 });
@@ -408,7 +414,7 @@ describe('Reader', () => {
         top: 225,
       }),
     );
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
 
     tap(3);
     tap(4);
@@ -531,7 +537,7 @@ describe('Reader', () => {
       clientY: 100,
     });
 
-    expect(screen.getByText('1 / 3')).toBeTruthy();
+    expect(screen.getByText('1–2 / 3')).toBeTruthy();
   });
 
   it('advances chapters with a right swipe and returns with a left swipe in continuous mode', () => {
@@ -715,7 +721,7 @@ describe('Reader', () => {
 
     await waitFor(() => {
       const prefetched = document.querySelectorAll('.paged-image-prefetch[hidden]');
-      expect(prefetched).toHaveLength(2);
+      expect(prefetched).toHaveLength(1);
       expect([...prefetched].every((element) => element.getAttribute('src'))).toBe(true);
     });
   });

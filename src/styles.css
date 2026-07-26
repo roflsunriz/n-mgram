@@ -1512,9 +1512,6 @@ p {
   gap: 2px;
   direction: ltr;
 }
-.reader-spread.is-cover .spread-page-right {
-  grid-column: 2;
-}
 .spread-page-left {
   grid-column: 1;
   grid-row: 1;
@@ -1528,6 +1525,32 @@ p {
 }
 .mode-paged .paged-image[hidden] {
   display: none;
+}
+.reader-end-page {
+  display: flex;
+  aspect-ratio: 0.707 / 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: clamp(18px, 4vw, 48px);
+  color: #1d1b17;
+  background: #f2eee4;
+  text-align: center;
+  box-shadow: inset 0 0 0 1px rgba(29, 27, 23, 0.12);
+}
+.reader-end-page strong {
+  margin-bottom: 18px;
+  font-family: 'Libre Baskerville', Georgia, serif;
+  font-size: clamp(18px, 2.2vw, 34px);
+}
+.reader-end-page span {
+  font-size: clamp(11px, 1.1vw, 15px);
+  font-variant-numeric: tabular-nums;
+}
+.reader-end-page span + span {
+  margin-top: 6px;
 }
 .mode-paged.fit-width .reader-spread {
   width: min(100%, 1300px);
@@ -1546,6 +1569,11 @@ p {
 .mode-paged.fit-height .page-image-placeholder {
   width: min(42vw, calc((100vh - 48px) * 0.72));
 }
+.mode-paged.fit-height .reader-end-page {
+  width: auto;
+  height: calc(100vh - 48px);
+  max-width: calc((100vw - 170px) / 2);
+}
 .mode-paged.fit-original .reader-spread {
   grid-template-columns: repeat(2, max-content);
 }
@@ -1554,6 +1582,9 @@ p {
   height: auto;
   max-width: none;
   max-height: none;
+}
+.mode-paged.fit-original .reader-end-page {
+  width: 720px;
 }
 .page-turn {
   position: fixed;
@@ -1644,6 +1675,14 @@ p {
   margin: 0;
   background: rgba(24, 24, 22, 0.9);
   backdrop-filter: blur(12px);
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+.reader-chapter-footer-paged.is-hidden {
+  transform: translateY(12px);
+  opacity: 0;
+  pointer-events: none;
 }
 @media (max-width: 900px) {
   .topbar {
@@ -1904,23 +1943,13 @@ p {
       max(12px, var(--safe-left));
     touch-action: pan-y;
   }
-  .reader-spread.is-single-page {
-    width: 100%;
-    min-height: 100%;
-    grid-template-columns: minmax(0, 1fr);
+  .mode-paged.fit-height .paged-image {
+    max-width: calc(50vw - max(12px, var(--safe-left)) - 2px);
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px);
   }
-  .reader-spread.is-single-page .spread-page-right {
-    grid-column: 1;
-    justify-self: center;
-  }
-  .mode-paged.fit-width .reader-spread.is-single-page .paged-image {
-    width: 100%;
-    max-height: none;
-  }
-  .mode-paged.fit-height .reader-spread.is-single-page .paged-image {
-    width: auto;
-    max-width: 100%;
-    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  .mode-paged.fit-height .reader-end-page {
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px);
+    max-width: calc(50vw - max(12px, var(--safe-left)) - 2px);
   }
   .page-turn {
     width: 48px;

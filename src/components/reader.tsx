@@ -30,7 +30,6 @@ const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
 const ZOOM_STEP = 0.5;
 const WHEEL_ZOOM_SENSITIVITY = 0.0025;
-const SINGLE_PAGE_QUERY = '(max-width: 620px) and (orientation: portrait)';
 
 interface PointerPosition {
   x: number;
@@ -70,7 +69,6 @@ export function Reader({
   const [pageIndex, setPageIndex] = useState(initialPage);
   const [readerSettings, setReaderSettings] = useState(loadReaderSettings);
   const { mode, fit } = readerSettings;
-  const [singlePage, setSinglePage] = useState(isCompactPortrait);
   const [blockedPageUrls, setBlockedPageUrls] = useState<ReadonlySet<string>>(() => new Set());
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
@@ -225,15 +223,8 @@ export function Reader({
   const changeSpread = useCallback(
     (direction: 'next' | 'previous') => {
       if (!chapter) return;
-      const nextPage = singlePage
-        ? direction === 'next'
-          ? activePageIndex + 1 < pageUrls.length
-            ? activePageIndex + 1
-            : undefined
-          : activePageIndex > 0
-            ? activePageIndex - 1
-            : undefined
-        : direction === 'next'
+      const nextPage =
+        direction === 'next'
           ? getNextSpreadStart(activePageIndex, pageUrls.length)
           : getPreviousSpreadStart(activePageIndex, pageUrls.length);
 
@@ -249,9 +240,7 @@ export function Reader({
           previous?.content.filter((url) => !blockedPageUrls.has(url)).length ?? 0;
         resetZoomForLayout();
         setChapterIndex((value) => value - 1);
-        setPageIndex(
-          singlePage ? Math.max(0, previousPageCount - 1) : getLastSpreadStart(previousPageCount),
-        );
+        setPageIndex(getLastSpreadStart(previousPageCount));
       }
     },
     [
@@ -262,7 +251,6 @@ export function Reader({
       chapters,
       pageUrls.length,
       resetZoomForLayout,
-      singlePage,
     ],
   );
 
@@ -341,15 +329,6 @@ export function Reader({
     },
     [windowsFullscreenAvailable],
   );
-
-  useEffect(() => {
-    if (!window.matchMedia) return;
-    const media = window.matchMedia(SINGLE_PAGE_QUERY);
-    const updateLayout = () => setSinglePage(media.matches);
-    updateLayout();
-    media.addEventListener?.('change', updateLayout);
-    return () => media.removeEventListener?.('change', updateLayout);
-  }, []);
 
   useEffect(() => {
     if (!windowsFullscreenAvailable) return;
@@ -484,9 +463,7 @@ export function Reader({
 
   if (!chapter) return null;
 
-  const spread = singlePage
-    ? { start: activePageIndex, end: activePageIndex, right: activePageIndex, left: undefined }
-    : getReaderSpread(activePageIndex, pageUrls.length);
+  const spread = getReaderSpread(activePageIndex, pageUrls.length);
   const pageLabel =
     pageUrls.length === 0
       ? '–'
@@ -499,10 +476,8 @@ export function Reader({
     setPageIndex(0);
   };
   const atChapterEnd =
-    pageUrls.length === 0 ||
-    (singlePage
-      ? activePageIndex >= pageUrls.length - 1
-      : getNextSpreadStart(activePageIndex, pageUrls.length) === undefined);
+    pageUrls.length === 0 || getNextSpreadStart(activePageIndex, pageUrls.length) === undefined;
+  const showEndPage = atChapterEnd && pageUrls.length % 2 === 1;
   return (
     <div
       className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'} ${zoom > MIN_ZOOM ? 'is-zoomed' : ''}`}
@@ -890,9 +865,7 @@ export function Reader({
               />
             </>
           ) : (
-            <div
-              className={`reader-spread ${spread.start === 0 ? 'is-cover' : ''} ${singlePage ? 'is-single-page' : ''}`}
-            >
+            <div className="reader-spread">
               {pageUrls.map((url, index) => {
                 const isLeft = spread.left === index;
                 const isRight = spread.right === index;
@@ -920,6 +893,13 @@ export function Reader({
                   />
                 );
               })}
+              {showEndPage && (
+                <EndOfContentsPage
+                  chapterIndex={chapterIndex}
+                  chapterCount={chapters.length}
+                  t={t}
+                />
+              )}
             </div>
           )}
         </div>
@@ -952,7 +932,7 @@ export function Reader({
       )}
       {mode === 'paged' && atChapterEnd && (
         <ChapterEndNavigation
-          className="reader-chapter-footer-paged"
+          className={`reader-chapter-footer-paged ${controlsVisible ? 'is-visible' : 'is-hidden'}`}
           chapterIndex={chapterIndex}
           chapterCount={chapters.length}
           onChange={changeChapter}
@@ -988,10 +968,6 @@ function isKeyboardInputTarget(target: EventTarget | null): boolean {
     target instanceof HTMLTextAreaElement ||
     (target instanceof HTMLElement && target.isContentEditable)
   );
-}
-
-function isCompactPortrait() {
-  return window.matchMedia?.(SINGLE_PAGE_QUERY).matches ?? false;
 }
 
 function isWindowsTauriApp() {
@@ -1030,6 +1006,35 @@ function ReaderImage({
       onVisible={() => onVisible(index)}
       onBlocked={onBlocked}
     />
+  );
+}
+
+function EndOfContentsPage({
+  chapterIndex,
+  chapterCount,
+  t,
+}: {
+  chapterIndex: number;
+  chapterCount: number;
+  t: Props['t'];
+}) {
+  const currentChapterPosition = chapterIndex + 1;
+  const chapterPercentage = Math.round((currentChapterPosition / chapterCount) * 100);
+  return (
+    <section
+      className="reader-end-page spread-page-left"
+      data-testid="reader-end-page"
+      aria-label={t('endOfContents')}
+    >
+      <strong>{t('endOfContents')}</strong>
+      <span>
+        {t('chapterCountProgress', {
+          current: currentChapterPosition,
+          total: chapterCount,
+        })}
+      </span>
+      <span>{t('readPercentage', { percentage: chapterPercentage })}</span>
+    </section>
   );
 }
 

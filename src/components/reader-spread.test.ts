@@ -7,23 +7,23 @@ import {
 } from './reader-spread';
 
 describe('right-bound reader spreads', () => {
-  it('places the cover alone on the right', () => {
-    expect(getReaderSpread(0, 8)).toEqual({ start: 0, end: 0, right: 0 });
+  it('places the first two pages together from the beginning', () => {
+    expect(getReaderSpread(0, 8)).toEqual({ start: 0, end: 1, right: 0, left: 1 });
   });
 
   it('places the earlier page on the right and the next page on the left', () => {
-    expect(getReaderSpread(2, 8)).toEqual({ start: 1, end: 2, right: 1, left: 2 });
+    expect(getReaderSpread(2, 8)).toEqual({ start: 2, end: 3, right: 2, left: 3 });
   });
 
-  it('navigates by one cover or two-page spreads', () => {
-    expect(getNextSpreadStart(0, 8)).toBe(1);
-    expect(getNextSpreadStart(1, 8)).toBe(3);
-    expect(getPreviousSpreadStart(3, 8)).toBe(1);
-    expect(getPreviousSpreadStart(1, 8)).toBe(0);
+  it('always navigates by two-page spreads', () => {
+    expect(getNextSpreadStart(0, 8)).toBe(2);
+    expect(getNextSpreadStart(1, 8)).toBe(2);
+    expect(getPreviousSpreadStart(3, 8)).toBe(0);
+    expect(getPreviousSpreadStart(1, 8)).toBeUndefined();
   });
 
   it('returns the final spread start for odd and even page counts', () => {
-    expect(getLastSpreadStart(8)).toBe(7);
-    expect(getLastSpreadStart(9)).toBe(7);
+    expect(getLastSpreadStart(8)).toBe(6);
+    expect(getLastSpreadStart(9)).toBe(8);
   });
 });
