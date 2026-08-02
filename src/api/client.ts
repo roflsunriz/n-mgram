@@ -51,6 +51,11 @@ const remoteImageUrl = z
   .string()
   .transform(normalizeImageUrl)
   .refine(isHttpsUrl, 'HTTPS画像URLではありません');
+const optionalRemoteImageUrl = z.preprocess(
+  (value: unknown) =>
+    value === null || (typeof value === 'string' && value.trim().length === 0) ? undefined : value,
+  remoteImageUrl.optional(),
+);
 const metadataNumber = z
   .union([z.number(), z.string()])
   .nullish()
@@ -156,7 +161,7 @@ export const chapterSchema = z
     content: chapterContentSchema,
     time: z.string().default(''),
     views: z.number().default(0),
-    cover: remoteImageUrl.optional(),
+    cover: optionalRemoteImageUrl,
   })
   .passthrough();
 

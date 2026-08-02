@@ -86,6 +86,47 @@ describe('API schemas', () => {
     expect(parsed[0]?.content).toEqual(['https://ihlv1.xyz/1.webp']);
   });
 
+  it('treats missing chapter covers returned as empty values as optional', () => {
+    const parsed = chapterListSchema.parse([
+      {
+        mid: 452,
+        name: 'JICHOU SHINAI MOTOYUUSHA NO TSUYOKUTE TANOSHII NEW GAME - RAW',
+        chapter: 19,
+        content: ['https://s2.ihlv1.xyz/images/20190910/page.jpg'],
+        time: '2024-01-28T19:26:18Z',
+        views: 342,
+        cover: '',
+      },
+      {
+        mid: 452,
+        name: 'JICHOU SHINAI MOTOYUUSHA NO TSUYOKUTE TANOSHII NEW GAME - RAW',
+        chapter: 38,
+        content: ['https://s2.ihlv1.xyz/images/20190910/page-2.jpg'],
+        time: '2024-01-28T19:26:18Z',
+        views: 342,
+        cover: null,
+      },
+    ]);
+
+    expect(parsed.map((chapter) => chapter.cover)).toEqual([undefined, undefined]);
+  });
+
+  it('still rejects non-HTTPS chapter covers after empty values are normalized', () => {
+    expect(() =>
+      chapterListSchema.parse([
+        {
+          mid: 452,
+          name: 'JICHOU SHINAI MOTOYUUSHA NO TSUYOKUTE TANOSHII NEW GAME - RAW',
+          chapter: 19,
+          content: ['https://s2.ihlv1.xyz/images/20190910/page.jpg'],
+          time: '2024-01-28T19:26:18Z',
+          views: 342,
+          cover: 'http://example.invalid/cover.jpg',
+        },
+      ]),
+    ).toThrow();
+  });
+
   it('preserves decimal chapter labels exactly instead of normalizing them', () => {
     const parsed = chapterListSchema.parse([
       {
