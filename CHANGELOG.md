@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Security
+
+- 開発・テスト用依存に含まれるサービス拒否、ローカルソースマップ読み取り、HTTP応答の不正解析・キャッシュ情報漏えい・Cookie属性注入の脆弱性8件を解消するため、`brace-expansion`、`nanoid`、`postcss`、`undici`を修正版へ更新。
+- 新たな脆弱性を品質検査で検出できるよう、CIへ`bun audit`を追加。
+
 ## [0.7.1] - 2026-08-02
 
 ### Fixed

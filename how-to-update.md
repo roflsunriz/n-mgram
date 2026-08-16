@@ -61,6 +61,7 @@ gh secret set ANDROID_KEY_PASSWORD --repo roflsunriz/n-mgram
 ```powershell
 git pull --ff-only
 bun install --frozen-lockfile
+bun audit
 bun run check
 bun run tauri build --no-bundle
 bun run tauri android build --debug --apk --target aarch64 --ci
@@ -80,8 +81,9 @@ NSISインストーラーと`.sig`は`src-tauri/target/release/bundle/nsis/`へ�
 1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`の3か所を同じSemVerへ更新する。
 2. `CHANGELOG.md`の`Unreleased`をリリース内容として整える。
 3. `bun install`でロックファイルを更新し、`bun run check`を通す。
-4. 変更を`main`へpushし、CI成功を確認する。
-5. 同じバージョンのタグをpushする。
+4. `bun audit`でJavaScript依存に既知の脆弱性がないことを確認する。
+5. 変更を`main`へpushし、CI成功を確認する。
+6. 同じバージョンのタグをpushする。
 
 例: `0.2.0`を公開する場合
 
