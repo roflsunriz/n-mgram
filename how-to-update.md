@@ -2,8 +2,8 @@
 
 ### 自動化の構成
 
-- `.github/workflows/ci.yml`: `main`へのpush、Pull Request、手動実行で、lint、format、型検査、テスト、Webビルド、WindowsデスクトップとAndroid APKのコンパイルを行う。
-- `.github/workflows/release.yml`: `vX.Y.Z`タグをpushするとWindows NSIS版とAndroid APKをビルドし、それぞれ署名して同じGitHub Releaseへ公開する。Windows用には`latest.json`と更新署名も公開する。
+- `.github/workflows/ci.yml`: `main`へのpush、Pull Request、手動実行で、JavaScript依存の脆弱性検査、lint、format、型検査、テスト、Webビルド、WindowsデスクトップとAndroid APKのコンパイルを行う。
+- `.github/workflows/release.yml`: `vX.Y.Z`タグのpushまたは手動実行時に、通常CIと同じJavaScript依存の脆弱性検査と品質検査を行ってから、Windows NSIS版とAndroid APKをビルドし、それぞれ署名して同じGitHub Releaseへ公開する。Windows用には`latest.json`と更新署名も公開する。
 - アプリの「アップデート」ページ: Windowsは`latest.json`からより新しい署名済み成果物を取得して更新・再起動する。AndroidはGitHub Release APIで新しいバージョンとAPKを確認し、ブラウザからAPKをダウンロードする。
 
 Tauri updaterは更新用成果物を検証してアプリ内更新する仕組みであり、バイト単位のバイナリ差分パッチ（bsdiff等）ではない。Windowsでは署名済みNSIS更新成果物を取得する。Tauri updaterはAndroidを対象にしていないため、Android版はOSの安全確認を迂回せず、署名済みAPKをブラウザと標準インストーラーで更新する。
