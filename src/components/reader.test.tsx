@@ -5,6 +5,17 @@ import type { Chapter, Manga } from '../api/client';
 import { createTranslator } from '../i18n';
 import { Reader } from './reader';
 
+interface PageFlipMockInstance {
+  settings: Record<string, unknown>;
+  loadedPages: HTMLElement[];
+  flips: number[];
+  destroyed: boolean;
+}
+
+const pageFlipApi = vi.hoisted(() => ({
+  instances: [] as PageFlipMockInstance[],
+}));
+
 const windowApi = vi.hoisted(() => ({
   state: { fullscreen: false },
   isFullscreen: vi.fn(async () => false),
@@ -16,6 +27,59 @@ const windowApi = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => windowApi,
 }));
+
+vi.mock('page-flip-2', () => {
+  class PageFlipMock implements PageFlipMockInstance {
+    settings: Record<string, unknown>;
+    loadedPages: HTMLElement[] = [];
+    flips: number[] = [];
+    destroyed = false;
+    private currentPage: number;
+    private flipHandler?: (event: { data: number; object: PageFlipMock }) => void;
+
+    constructor(_root: HTMLElement, settings: Record<string, unknown>) {
+      this.settings = settings;
+      this.currentPage = typeof settings.startPage === 'number' ? settings.startPage : 0;
+      pageFlipApi.instances.push(this);
+    }
+
+    on<T>(event: string, callback: (event: { data: T; object: PageFlipMock }) => void) {
+      if (event === 'flip') {
+        this.flipHandler = callback as (event: { data: number; object: PageFlipMock }) => void;
+      }
+      return this;
+    }
+
+    off(event: string) {
+      if (event === 'flip') this.flipHandler = undefined;
+    }
+
+    loadFromHTML(items: NodeListOf<HTMLElement> | HTMLElement[]) {
+      this.loadedPages = Array.from(items);
+    }
+
+    getCurrentPageIndex() {
+      return this.currentPage;
+    }
+
+    flip(page: number) {
+      this.flips.push(page);
+      this.currentPage = page;
+      this.flipHandler?.({ data: page, object: this });
+    }
+
+    destroy() {
+      this.destroyed = true;
+    }
+  }
+
+  return {
+    DisplayMode: { LANDSCAPE: 'landscape' },
+    ReadingDirection: { RTL: 'rtl' },
+    SizeType: { STRETCH: 'stretch' },
+    PageFlip: PageFlipMock,
+  };
+});
 
 class IntersectionObserverStub {
   observe() {}
@@ -35,6 +99,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  pageFlipApi.instances.length = 0;
   windowApi.state.fullscreen = false;
   windowApi.isFullscreen.mockReset().mockImplementation(async () => windowApi.state.fullscreen);
   windowApi.setFullscreen.mockReset().mockImplementation(async (value: boolean) => {
@@ -160,6 +225,36 @@ describe('Reader', () => {
     fireEvent.click(screen.getByTestId('reader-mode-paged'));
     expect(screen.getByText('1–2 / 2')).toBeTruthy();
     expect(screen.queryByTestId('reader-end-page')).toBeNull();
+  });
+
+  it('configures an RTL landscape page flip and destroys it when leaving paged mode', () => {
+    render(
+      <Reader
+        manga={manga}
+        chapters={chapters}
+        initialChapter={0}
+        initialPage={0}
+        onClose={vi.fn()}
+        onProgress={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('reader-mode-paged'));
+    const instance = pageFlipApi.instances.at(-1);
+    expect(instance?.settings).toMatchObject({
+      size: 'stretch',
+      displayMode: 'landscape',
+      readingDirection: 'rtl',
+      useMouseEvents: false,
+    });
+    expect(instance?.loadedPages).toHaveLength(4);
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(instance?.flips).toEqual([2]);
+
+    fireEvent.click(screen.getByTestId('reader-mode-continuous'));
+    expect(instance?.destroyed).toBe(true);
   });
 
   it('closes with Escape', () => {
@@ -720,7 +815,9 @@ describe('Reader', () => {
     fireEvent.click(screen.getByTestId('reader-mode-paged'));
 
     await waitFor(() => {
-      const prefetched = document.querySelectorAll('.paged-image-prefetch[hidden]');
+      const prefetched = document.querySelectorAll(
+        '[data-reader-page-flip-page][aria-hidden="true"] .paged-image-prefetch',
+      );
       expect(prefetched).toHaveLength(1);
       expect([...prefetched].every((element) => element.getAttribute('src'))).toBe(true);
     });

@@ -1495,36 +1495,54 @@ p {
 }
 .mode-paged {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 18px 80px 42px;
 }
 .mode-paged .reader-zoom-surface {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
-.reader-spread {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  direction: ltr;
+.reader-page-flip {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: auto;
+  background: #161614;
 }
-.spread-page-left {
-  grid-column: 1;
-  grid-row: 1;
+.reader-page-flip > .page-flip-2__wrapper {
+  width: 100%;
+  height: 100%;
 }
-.spread-page-right {
-  grid-column: 2;
-  grid-row: 1;
+.reader-page-flip .page-flip-2__block,
+.reader-page-flip-page {
+  background: #161614;
 }
-.mode-paged .paged-image {
+.reader-page-flip-page .paged-image {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  box-shadow: none;
 }
-.mode-paged .paged-image[hidden] {
-  display: none;
+.reader-page-flip-page .page-image-placeholder {
+  aspect-ratio: auto;
+}
+.reader-page-flip-fit-width {
+  width: min(100%, 1300px);
+  height: auto;
+  aspect-ratio: 1440 / 1024;
+}
+.reader-page-flip-fit-height {
+  width: auto;
+  max-width: 100%;
+  height: calc(100vh - 48px);
+  aspect-ratio: 1440 / 1024;
+}
+.reader-page-flip-fit-original {
+  width: 1440px;
+  max-width: none;
+  height: 1024px;
 }
 .reader-end-page {
   display: flex;
@@ -1551,40 +1569,6 @@ p {
 }
 .reader-end-page span + span {
   margin-top: 6px;
-}
-.mode-paged.fit-width .reader-spread {
-  width: min(100%, 1300px);
-}
-.mode-paged.fit-width .paged-image {
-  width: 100%;
-  height: auto;
-  max-height: none;
-}
-.mode-paged.fit-height .paged-image {
-  width: auto;
-  max-width: calc((100vw - 170px) / 2);
-  max-height: calc(100vh - 48px);
-  height: auto;
-}
-.mode-paged.fit-height .page-image-placeholder {
-  width: min(42vw, calc((100vh - 48px) * 0.72));
-}
-.mode-paged.fit-height .reader-end-page {
-  width: auto;
-  height: calc(100vh - 48px);
-  max-width: calc((100vw - 170px) / 2);
-}
-.mode-paged.fit-original .reader-spread {
-  grid-template-columns: repeat(2, max-content);
-}
-.mode-paged.fit-original .paged-image {
-  width: auto;
-  height: auto;
-  max-width: none;
-  max-height: none;
-}
-.mode-paged.fit-original .reader-end-page {
-  width: 720px;
 }
 .page-turn {
   position: fixed;
@@ -1943,13 +1927,8 @@ p {
       max(12px, var(--safe-left));
     touch-action: pan-y;
   }
-  .mode-paged.fit-height .paged-image {
-    max-width: calc(50vw - max(12px, var(--safe-left)) - 2px);
-    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px);
-  }
-  .mode-paged.fit-height .reader-end-page {
+  .reader-page-flip-fit-height {
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 16px);
-    max-width: calc(50vw - max(12px, var(--safe-left)) - 2px);
   }
   .page-turn {
     width: 48px;

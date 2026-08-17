@@ -11,6 +11,8 @@ import {
 } from '../storage/reader-settings-store';
 import { ArrowLeftIcon, ArrowRightIcon, BookIcon, CloseIcon, FullscreenIcon } from './icons';
 import { PageImage } from './page-image';
+import { ChapterEndNavigation, EndOfContentsPage } from './reader-chapter-navigation';
+import { ReaderPageFlip } from './reader-page-flip';
 import { ReaderPullRefreshIndicator, useReaderPullRefresh } from './reader-pull-refresh';
 import {
   getLastSpreadStart,
@@ -477,7 +479,6 @@ export function Reader({
   };
   const atChapterEnd =
     pageUrls.length === 0 || getNextSpreadStart(activePageIndex, pageUrls.length) === undefined;
-  const showEndPage = atChapterEnd && pageUrls.length % 2 === 1;
   return (
     <div
       className={`reader-shell ${controlsVisible ? 'controls-visible' : 'controls-hidden'} ${zoom > MIN_ZOOM ? 'is-zoomed' : ''}`}
@@ -865,42 +866,23 @@ export function Reader({
               />
             </>
           ) : (
-            <div className="reader-spread">
-              {pageUrls.map((url, index) => {
-                const isLeft = spread.left === index;
-                const isRight = spread.right === index;
-                const isVisible = isLeft || isRight;
-                const nearCurrentSpread =
-                  index >= Math.max(0, spread.start - 2) && index <= spread.end + 4;
-                return (
-                  <PageImage
-                    key={`${url}-${index}`}
-                    className={`reader-image paged-image ${
-                      isLeft
-                        ? 'spread-page-left'
-                        : isRight
-                          ? 'spread-page-right'
-                          : 'paged-image-prefetch'
-                    }`}
-                    url={url}
-                    alt={`${index + 1}`}
-                    pageIndex={index}
-                    eager={nearCurrentSpread}
-                    hidden={!isVisible}
-                    loadFailedLabel={t('imageLoadFailed')}
-                    retryLabel={t('reloadImage')}
-                    onBlocked={markPageBlocked}
-                  />
-                );
-              })}
-              {showEndPage && (
+            <ReaderPageFlip
+              key={`${chapterIndex}-${fit}-${pageUrls.join('|')}`}
+              pageUrls={pageUrls}
+              activePageIndex={activePageIndex}
+              fit={fit}
+              loadFailedLabel={t('imageLoadFailed')}
+              retryLabel={t('reloadImage')}
+              endPage={
                 <EndOfContentsPage
                   chapterIndex={chapterIndex}
                   chapterCount={chapters.length}
                   t={t}
                 />
-              )}
-            </div>
+              }
+              onBlocked={markPageBlocked}
+              onPageChange={setPageIndex}
+            />
           )}
         </div>
       </div>
@@ -1006,87 +988,5 @@ function ReaderImage({
       onVisible={() => onVisible(index)}
       onBlocked={onBlocked}
     />
-  );
-}
-
-function EndOfContentsPage({
-  chapterIndex,
-  chapterCount,
-  t,
-}: {
-  chapterIndex: number;
-  chapterCount: number;
-  t: Props['t'];
-}) {
-  const currentChapterPosition = chapterIndex + 1;
-  const chapterPercentage = Math.round((currentChapterPosition / chapterCount) * 100);
-  return (
-    <section
-      className="reader-end-page spread-page-left"
-      data-testid="reader-end-page"
-      aria-label={t('endOfContents')}
-    >
-      <strong>{t('endOfContents')}</strong>
-      <span>
-        {t('chapterCountProgress', {
-          current: currentChapterPosition,
-          total: chapterCount,
-        })}
-      </span>
-      <span>{t('readPercentage', { percentage: chapterPercentage })}</span>
-    </section>
-  );
-}
-
-function ChapterEndNavigation({
-  className = '',
-  chapterIndex,
-  chapterCount,
-  showChapterPosition = false,
-  onChange,
-  t,
-}: {
-  className?: string;
-  chapterIndex: number;
-  chapterCount: number;
-  showChapterPosition?: boolean;
-  onChange: (chapterIndex: number) => void;
-  t: Props['t'];
-}) {
-  const currentChapterPosition = chapterIndex + 1;
-  const chapterPercentage = Math.round((currentChapterPosition / chapterCount) * 100);
-  return (
-    <nav className={`reader-chapter-footer ${className}`} aria-label={t('chapters')}>
-      <button
-        type="button"
-        className="reader-chapter-button"
-        data-testid="reader-next-chapter-footer"
-        onClick={() => onChange(chapterIndex + 1)}
-        disabled={chapterIndex === chapterCount - 1}
-      >
-        {t('nextChapter')}
-      </button>
-      <div className="reader-chapter-footer-copy">
-        <p>{t('chapterComplete')}</p>
-        {showChapterPosition && (
-          <span data-testid="reader-chapter-position">
-            {t('chapterPosition', {
-              current: currentChapterPosition,
-              total: chapterCount,
-              percentage: chapterPercentage,
-            })}
-          </span>
-        )}
-      </div>
-      <button
-        type="button"
-        className="reader-chapter-button"
-        data-testid="reader-previous-chapter-footer"
-        onClick={() => onChange(chapterIndex - 1)}
-        disabled={chapterIndex === 0}
-      >
-        {t('previousChapter')}
-      </button>
-    </nav>
   );
 }
