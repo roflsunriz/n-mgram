@@ -394,6 +394,7 @@ try {
       '--headless=new',
       '--disable-gpu',
       '--no-sandbox',
+      '--lang=ja-JP',
       `--remote-debugging-port=${DEBUG_PORT}`,
       `--user-data-dir=${profile}`,
       '--window-size=390,844',
@@ -435,6 +436,10 @@ try {
   );
   await client.send('Runtime.enable');
   await client.send('Page.enable');
+  await client.send('Page.addScriptToEvaluateOnNewDocument', {
+    source:
+      "Object.defineProperty(Navigator.prototype, 'language', { get: () => 'ja-JP' }); Object.defineProperty(Navigator.prototype, 'languages', { get: () => ['ja-JP', 'ja'] });",
+  });
   await client.send('Fetch.enable', {
     patterns: [{ urlPattern: `https://${API_HOST}/*` }, { urlPattern: `https://${IMAGE_HOST}/*` }],
   });
@@ -447,6 +452,8 @@ try {
   });
   await client.send('Page.navigate', { url: APP_URL });
   await waitForSelector(client, '[data-testid="library-tab-history"]');
+  const browserLanguage = await evaluate(client, 'navigator.language');
+  assert(browserLanguage === 'ja-JP', `Browser locale override failed: ${browserLanguage}`);
 
   await runScenarios(client);
   assert(errors.length === 0, `Browser exceptions occurred: ${errors.join('; ')}`);
