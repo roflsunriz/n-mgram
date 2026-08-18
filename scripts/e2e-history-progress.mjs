@@ -438,6 +438,7 @@ try {
   await client.send('Fetch.enable', {
     patterns: [{ urlPattern: `https://${API_HOST}/*` }, { urlPattern: `https://${IMAGE_HOST}/*` }],
   });
+  await client.send('Emulation.setLocaleOverride', { locale: 'ja-JP' });
   await client.send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,
