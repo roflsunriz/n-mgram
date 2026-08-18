@@ -1,3 +1,4 @@
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { z } from 'zod';
 
 export interface AppUpdateProgress {
@@ -64,11 +65,8 @@ export async function checkForAppUpdate(): Promise<AvailableAppUpdate | undefine
 }
 
 async function checkForAndroidUpdate(): Promise<AvailableAppUpdate | undefined> {
-  const [{ fetch }, { getVersion }] = await Promise.all([
-    import('@tauri-apps/plugin-http'),
-    import('@tauri-apps/api/app'),
-  ]);
-  const response = await fetch(ANDROID_RELEASE_API, {
+  const { getVersion } = await import('@tauri-apps/api/app');
+  const response = await tauriFetch(ANDROID_RELEASE_API, {
     headers: {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
