@@ -2,6 +2,7 @@ import type { Locale, MessageKey } from '../i18n';
 import {
   getProgressPercentage,
   hasCompleteHistoryMetadata,
+  hasCompleteMangaProgress,
   hasNewChapter,
   type ReadingProgress,
 } from '../storage/library-store';
@@ -48,7 +49,9 @@ export function ReadingHistoryPanel({
   t,
 }: HistoryProps) {
   const completeHistory = history.filter(hasCompleteHistoryMetadata);
-  const incompleteCount = history.length - completeHistory.length;
+  const pendingRestorationCount = history.filter(
+    (entry) => !hasCompleteHistoryMetadata(entry) || !hasCompleteMangaProgress(entry),
+  ).length;
 
   return (
     <section className="dashboard-panel standalone-panel history-panel">
@@ -74,13 +77,13 @@ export function ReadingHistoryPanel({
           <span className="count-badge">{history.length}</span>
         </div>
       </div>
-      {restoringMetadata && incompleteCount > 0 && (
+      {restoringMetadata && pendingRestorationCount > 0 && (
         <div className="history-restore-status" role="status">
           <span className="spinner" />
-          <span>{t('restoringHistory', { count: incompleteCount })}</span>
+          <span>{t('restoringHistory', { count: pendingRestorationCount })}</span>
         </div>
       )}
-      {!restoringMetadata && metadataFailures > 0 && incompleteCount > 0 && (
+      {!restoringMetadata && metadataFailures > 0 && pendingRestorationCount > 0 && (
         <div className="history-restore-error" role="alert">
           <p>{t('historyRestoreFailed', { count: metadataFailures })}</p>
           <button type="button" onClick={onRetryMetadata}>
@@ -96,7 +99,8 @@ export function ReadingHistoryPanel({
       ) : completeHistory.length > 0 ? (
         <div className="history-list">
           {completeHistory.map((entry) => {
-            const percentage = getProgressPercentage(entry);
+            const hasMangaProgress = hasCompleteMangaProgress(entry);
+            const percentage = hasMangaProgress ? getProgressPercentage(entry) : undefined;
             return (
               <article className="history-entry" key={entry.mangaId}>
                 <button
@@ -108,18 +112,20 @@ export function ReadingHistoryPanel({
                   <span className="history-copy">
                     <strong>{entry.title}</strong>
                     <span className="history-meta">
-                      {t('chapter', { number: entry.chapter })} ·{' '}
-                      {t('readPercentage', { percentage })}
+                      {t('chapter', { number: entry.chapter })}
+                      {percentage !== undefined && <> · {t('readPercentage', { percentage })}</>}
                     </span>
-                    <span
-                      className="progress-track"
-                      role="progressbar"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={percentage}
-                    >
-                      <span style={{ width: `${percentage}%` }} />
-                    </span>
+                    {percentage !== undefined && (
+                      <span
+                        className="progress-track"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={percentage}
+                      >
+                        <span style={{ width: `${percentage}%` }} />
+                      </span>
+                    )}
                     <time dateTime={entry.updatedAt}>
                       {t('lastReadAt', {
                         date: formatHistoryDate(entry.updatedAt, locale, t),

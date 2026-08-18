@@ -33,7 +33,7 @@ import {
   type MangaSortKey,
   type SortDirection,
 } from './search/manga-search';
-import { checkHistoryUpdates } from './services/history-update-checker';
+import { restoreHistoryEntries } from './services/history-restorer';
 import { loadFavoriteCatalog } from './services/favorite-catalog-loader';
 import { prefetchChapterEdges } from './services/chapter-edge-prefetch';
 import {
@@ -41,12 +41,14 @@ import {
   getHistory,
   getProgress,
   hasCompleteHistoryMetadata,
+  hasCompleteMangaProgress,
   hasNewChapter,
   loadLibrary,
   removeHistory,
   saveProgress,
   toggleFavorite,
   updateHistoryCatalog,
+  updateHistoryChapterCatalogs,
   type ReadingProgress,
 } from './storage/library-store';
 
@@ -102,6 +104,7 @@ export function App() {
   const [favoriteCatalogLoading, setFavoriteCatalogLoading] = useState(false);
   const [favoriteCatalogFailures, setFavoriteCatalogFailures] = useState(0);
   const favoriteAttemptedIdsRef = useRef(new Set<number>());
+  const historyRestorationGenerationRef = useRef(0);
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState(initialLibrary.lastUpdateCheckAt);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateCheckFailures, setUpdateCheckFailures] = useState(0);
@@ -183,6 +186,15 @@ export function App() {
     () => history.filter(hasCompleteHistoryMetadata).filter(hasNewChapter).length,
     [history],
   );
+  const historyRestorationKey = useMemo(
+    () =>
+      history
+        .filter((entry) => !hasCompleteHistoryMetadata(entry) || !hasCompleteMangaProgress(entry))
+        .map((entry) => `${entry.mangaId}:${entry.latestChapter}`)
+        .sort()
+        .join('|'),
+    [history],
+  );
 
   const loadFavoriteMetadata = useCallback(async (mangaIds: readonly number[]) => {
     if (mangaIds.length === 0) {
@@ -240,28 +252,35 @@ export function App() {
   );
 
   const restoreHistoryMetadata = useCallback(async () => {
-    const incompleteHistory = getHistory().filter((entry) => !hasCompleteHistoryMetadata(entry));
+    const incompleteHistory = getHistory().filter(
+      (entry) => !hasCompleteHistoryMetadata(entry) || !hasCompleteMangaProgress(entry),
+    );
     if (incompleteHistory.length === 0) {
       setHistoryMetadataFailures(0);
       return;
     }
+    const restorationGeneration = ++historyRestorationGenerationRef.current;
     setRestoringHistoryMetadata(true);
     setHistoryMetadataFailures(0);
     try {
-      const result = await checkHistoryUpdates(incompleteHistory);
+      const result = await restoreHistoryEntries(incompleteHistory);
+      if (restorationGeneration !== historyRestorationGenerationRef.current) return;
       if (result.manga.length > 0) updateHistoryCatalog(result.manga);
-      setHistory(getHistory());
+      setHistory(updateHistoryChapterCatalogs(result.chapterCatalogs));
       setHistoryMetadataFailures(result.failed);
     } finally {
-      setRestoringHistoryMetadata(false);
+      if (restorationGeneration === historyRestorationGenerationRef.current) {
+        setRestoringHistoryMetadata(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    // 旧保存形式の履歴は、実データを取得できるまで仮の作品情報を表示しない。
+    if (!historyRestorationKey) return;
+    // 旧保存形式や新章追加後の履歴は、実際の章一覧から全体進捗を復元する。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void restoreHistoryMetadata();
-  }, [restoreHistoryMetadata]);
+  }, [historyRestorationKey, restoreHistoryMetadata]);
 
   useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration;
@@ -343,6 +362,9 @@ export function App() {
       const chapterList = restoreTruncatedChapterNumbers(fetchedChapters, detail.lastChapter);
       setSelected(detail);
       setChapters(chapterList);
+      if (hasReadingHistory) {
+        setHistory(updateHistoryChapterCatalogs([{ mangaId: manga.id, chapters: chapterList }]));
+      }
       if (!hasReadingHistory) void prefetchChapterEdges(chapterList);
     } catch (caught: unknown) {
       setDetailError(caught instanceof Error ? caught.message : String(caught));
@@ -371,6 +393,8 @@ export function App() {
   const recordProgress = useCallback(
     (chapter: Chapter, readerPage: number) => {
       if (!selected) return;
+      const chapterIndex = findChapterNumberIndex(chapters, chapter.chapter);
+      if (chapterIndex < 0) return;
       const latestChapter = chapters.reduce(
         (latest, item) => maxChapterNumber(latest, item.chapter),
         chapter.chapter,
@@ -383,6 +407,8 @@ export function App() {
           chapter: chapter.chapter,
           page: readerPage,
           pageCount: chapter.content.length,
+          chapterIndex,
+          chapterCount: chapters.length,
           latestChapter,
         }),
       );
@@ -413,6 +439,7 @@ export function App() {
       );
       setSelected(detail);
       setChapters(chapterList);
+      setHistory(updateHistoryChapterCatalogs([{ mangaId: entry.mangaId, chapters: chapterList }]));
       setReaderStart({ chapter: chapterIndex, page: safePage });
       navigateForward('reader');
     } catch (caught: unknown) {
@@ -428,16 +455,18 @@ export function App() {
   const refreshChapterUpdates = async () => {
     const currentHistory = getHistory();
     if (currentHistory.length === 0) return;
+    historyRestorationGenerationRef.current += 1;
+    setRestoringHistoryMetadata(false);
     setCheckingUpdates(true);
     setUpdateCheckFailures(0);
     try {
-      const result = await checkHistoryUpdates(currentHistory);
+      const result = await restoreHistoryEntries(currentHistory);
       setUpdateCheckFailures(result.failed);
       if (result.manga.length > 0) {
         const library = updateHistoryCatalog(result.manga, true);
-        setHistory(getHistory());
         setLastUpdateCheckAt(library.lastUpdateCheckAt);
       }
+      setHistory(updateHistoryChapterCatalogs(result.chapterCatalogs));
     } finally {
       setCheckingUpdates(false);
     }

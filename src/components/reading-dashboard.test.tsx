@@ -13,6 +13,8 @@ const history: ReadingProgress[] = [
     chapter: 3,
     page: 4,
     pageCount: 10,
+    chapterIndex: 2,
+    chapterCount: 5,
     latestChapter: 5,
     updatedAt: '2026-07-21T12:00:00.000Z',
   },
@@ -42,6 +44,53 @@ describe('reading pages', () => {
     expect(screen.getByText('第3話 · 50% 読了')).toBeTruthy();
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50');
     expect(screen.getByText(/最終閲覧/)).toBeTruthy();
+  });
+
+  it('shows progress across the whole manga instead of only the current chapter', () => {
+    render(
+      <ReadingHistoryPanel
+        history={[
+          {
+            ...history[0]!,
+            chapter: 4,
+            chapterIndex: 3,
+            chapterCount: 10,
+          },
+        ]}
+        locale="ja"
+        restoringMetadata={false}
+        metadataFailures={0}
+        onOpen={vi.fn()}
+        onDelete={vi.fn()}
+        onClear={vi.fn()}
+        onRetryMetadata={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    expect(screen.getByText('第4話 · 35% 読了')).toBeTruthy();
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('35');
+  });
+
+  it('does not show a misleading percentage before migrated chapter order is restored', () => {
+    render(
+      <ReadingHistoryPanel
+        history={[{ ...history[0]!, chapterCount: 0 }]}
+        locale="ja"
+        restoringMetadata
+        metadataFailures={0}
+        onOpen={vi.fn()}
+        onDelete={vi.fn()}
+        onClear={vi.fn()}
+        onRetryMetadata={vi.fn()}
+        t={createTranslator('ja')}
+      />,
+    );
+
+    expect(screen.getByText('第3話')).toBeTruthy();
+    expect(screen.queryByText(/% 読了/)).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('1件の履歴情報を復元中');
   });
 
   it('never renders a fake entry while migrated metadata is restored', () => {

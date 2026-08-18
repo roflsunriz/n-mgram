@@ -11,9 +11,10 @@
     "format:write": "prettier --write .",
     "type-check": "tsc -b --pretty false",
     "test": "vitest run",
+    "test:e2e:history": "bun scripts/e2e-history-progress.mjs",
     "test:watch": "vitest",
     "sync:android-icons": "bun scripts/sync-android-icons.mjs",
-    "check": "bun run lint && bun run format && bun run type-check && bun run test && bun run build",
+    "check": "bun run lint && bun run format && bun run type-check && bun run test && bun run build && bun run test:e2e:history",
     "tauri": "tauri"
   },
   "dependencies": {

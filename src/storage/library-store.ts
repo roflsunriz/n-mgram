@@ -1,13 +1,14 @@
-import type { Manga } from '../api/client';
+import type { Chapter, Manga } from '../api/client';
 import {
   compareChapterNumbers,
+  findChapterNumberIndex,
   isChapterNumber,
   maxChapterNumber,
   type ChapterNumber,
 } from '../api/chapter-number';
 
 const STORAGE_KEY = 'n-mgram.library';
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 4;
 
 export interface FavoriteEntry {
   mangaId: number;
@@ -21,6 +22,8 @@ export interface ReadingProgress {
   chapter: ChapterNumber;
   page: number;
   pageCount: number;
+  chapterIndex: number;
+  chapterCount: number;
   latestChapter: ChapterNumber;
   updatedAt: string;
 }
@@ -28,7 +31,7 @@ export interface ReadingProgress {
 export type ReadingProgressUpdate = Omit<ReadingProgress, 'updatedAt'>;
 
 export interface StoredLibrary {
-  version: 3;
+  version: 4;
   favorites: FavoriteEntry[];
   history: Record<string, ReadingProgress>;
   lastUpdateCheckAt?: string;
@@ -40,6 +43,8 @@ interface LegacyReadingProgress {
   page: number;
   updatedAt: string;
 }
+
+type Version3ReadingProgress = Omit<ReadingProgress, 'chapterIndex' | 'chapterCount'>;
 
 function emptyLibrary(): StoredLibrary {
   return { version: STORAGE_VERSION, favorites: [], history: {} };
@@ -80,15 +85,31 @@ function isStoredLibrary(value: unknown): value is StoredLibrary {
 function migrateLegacyLibrary(value: unknown): StoredLibrary | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const candidate = value as Record<string, unknown>;
-  if (candidate.version === 2) {
+  if (candidate.version === 3) {
     if (
-      !isLegacyFavoriteList(candidate.favorites) ||
-      !isProgressRecord(candidate.history) ||
+      !isFavoriteEntries(candidate.favorites) ||
+      !isVersion3ProgressRecord(candidate.history) ||
       (candidate.lastUpdateCheckAt !== undefined && typeof candidate.lastUpdateCheckAt !== 'string')
     ) {
       return undefined;
     }
-    const history = candidate.history;
+    return {
+      version: STORAGE_VERSION,
+      favorites: candidate.favorites,
+      history: migrateVersion3Progress(candidate.history),
+      ...(candidate.lastUpdateCheckAt ? { lastUpdateCheckAt: candidate.lastUpdateCheckAt } : {}),
+    };
+  }
+
+  if (candidate.version === 2) {
+    if (
+      !isLegacyFavoriteList(candidate.favorites) ||
+      !isVersion3ProgressRecord(candidate.history) ||
+      (candidate.lastUpdateCheckAt !== undefined && typeof candidate.lastUpdateCheckAt !== 'string')
+    ) {
+      return undefined;
+    }
+    const history = migrateVersion3Progress(candidate.history);
     return {
       version: STORAGE_VERSION,
       favorites: candidate.favorites.map((mangaId) => ({
@@ -116,6 +137,8 @@ function migrateLegacyLibrary(value: unknown): StoredLibrary | undefined {
       title: '',
       cover: '',
       pageCount: 0,
+      chapterIndex: 0,
+      chapterCount: 0,
       latestChapter: entry.chapter,
     };
   }
@@ -153,7 +176,50 @@ function isProgressRecord(value: unknown): value is Record<string, ReadingProgre
   );
 }
 
+function isVersion3ProgressRecord(
+  value: unknown,
+): value is Record<string, Version3ReadingProgress> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Object.values(value as Record<string, unknown>).every(isVersion3ReadingProgress)
+  );
+}
+
+function migrateVersion3Progress(
+  history: Record<string, Version3ReadingProgress>,
+): Record<string, ReadingProgress> {
+  return Object.fromEntries(
+    Object.entries(history).map(([key, entry]) => [
+      key,
+      { ...entry, chapterIndex: 0, chapterCount: 0 },
+    ]),
+  );
+}
+
 function isReadingProgress(value: unknown): value is ReadingProgress {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Number.isInteger(candidate.mangaId) &&
+    Number(candidate.mangaId) > 0 &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.cover === 'string' &&
+    isChapterNumber(candidate.chapter) &&
+    Number.isInteger(candidate.page) &&
+    Number(candidate.page) >= 0 &&
+    Number.isInteger(candidate.pageCount) &&
+    Number(candidate.pageCount) >= 0 &&
+    Number.isInteger(candidate.chapterIndex) &&
+    Number(candidate.chapterIndex) >= 0 &&
+    Number.isInteger(candidate.chapterCount) &&
+    Number(candidate.chapterCount) >= 0 &&
+    isChapterNumber(candidate.latestChapter) &&
+    typeof candidate.updatedAt === 'string'
+  );
+}
+
+function isVersion3ReadingProgress(value: unknown): value is Version3ReadingProgress {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
   return (
@@ -251,14 +317,17 @@ export function updateHistoryCatalog(
     const entry = library.history[String(manga.id)];
     if (!entry) continue;
     const latestChapter = parseChapterNumber(manga.lastChapter);
+    const nextLatestChapter =
+      latestChapter === undefined
+        ? entry.latestChapter
+        : maxChapterNumber(entry.latestChapter, latestChapter);
+    const chapterCatalogChanged = compareChapterNumbers(nextLatestChapter, entry.latestChapter) > 0;
     library.history[String(manga.id)] = {
       ...entry,
       title: manga.name,
       cover: manga.cover,
-      latestChapter:
-        latestChapter === undefined
-          ? entry.latestChapter
-          : maxChapterNumber(entry.latestChapter, latestChapter),
+      latestChapter: nextLatestChapter,
+      chapterCount: chapterCatalogChanged ? 0 : entry.chapterCount,
     };
   }
   if (markCheckComplete) library.lastUpdateCheckAt = new Date().toISOString();
@@ -266,9 +335,46 @@ export function updateHistoryCatalog(
   return library;
 }
 
+export interface HistoryChapterCatalog {
+  mangaId: number;
+  chapters: readonly Pick<Chapter, 'chapter'>[];
+}
+
+export function updateHistoryChapterCatalogs(
+  catalogs: readonly HistoryChapterCatalog[],
+): ReadingProgress[] {
+  const library = loadLibrary();
+  let changed = false;
+  for (const catalog of catalogs) {
+    const entry = library.history[String(catalog.mangaId)];
+    if (!entry || catalog.chapters.length === 0) continue;
+    const chapterIndex = findChapterNumberIndex(catalog.chapters, entry.chapter);
+    if (chapterIndex < 0) continue;
+    library.history[String(catalog.mangaId)] = {
+      ...entry,
+      chapterIndex,
+      chapterCount: catalog.chapters.length,
+    };
+    changed = true;
+  }
+  if (changed) saveLibrary(library);
+  return sortedHistory(library);
+}
+
 export function getProgressPercentage(progress: ReadingProgress): number {
-  if (progress.pageCount <= 0) return 0;
-  return Math.min(100, Math.max(0, Math.round(((progress.page + 1) / progress.pageCount) * 100)));
+  if (!hasCompleteMangaProgress(progress)) return 0;
+  const pageProgress =
+    progress.pageCount <= 0
+      ? 0
+      : Math.min(1, Math.max(0, (progress.page + 1) / progress.pageCount));
+  return Math.min(
+    100,
+    Math.max(0, Math.round(((progress.chapterIndex + pageProgress) / progress.chapterCount) * 100)),
+  );
+}
+
+export function hasCompleteMangaProgress(progress: ReadingProgress): boolean {
+  return progress.chapterCount > 0 && progress.chapterIndex < progress.chapterCount;
 }
 
 export function hasNewChapter(progress: ReadingProgress): boolean {

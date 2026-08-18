@@ -311,16 +311,29 @@ describe('App library pages', () => {
       lastChapter: '3.2',
     };
     vi.mocked(getCollection).mockResolvedValueOnce([decimalManga]);
-    vi.mocked(getManga).mockResolvedValueOnce(decimalManga);
-    vi.mocked(getChapters).mockResolvedValueOnce(
-      [1, 1, 1, 2, 2, 3, 3].map((chapter, index) => ({
-        mid: 8,
-        name: decimalManga.name,
-        chapter,
-        content: [`https://ihlv1.xyz/${index}.webp`],
-        time: '',
-        views: 0,
-      })),
+    vi.mocked(getManga).mockImplementation(async (id) =>
+      id === decimalManga.id ? decimalManga : restoredManga,
+    );
+    vi.mocked(getChapters).mockImplementation(async (id) =>
+      id === decimalManga.id
+        ? [1, 1, 1, 2, 2, 3, 3].map((chapter, index) => ({
+            mid: 8,
+            name: decimalManga.name,
+            chapter,
+            content: [`https://ihlv1.xyz/${index}.webp`],
+            time: '',
+            views: 0,
+          }))
+        : [
+            {
+              mid: 7,
+              name: '復元された作品',
+              chapter: 3,
+              content: ['https://ihlv1.xyz/3-1.webp'],
+              time: '',
+              views: 0,
+            },
+          ],
     );
 
     render(<App />);
