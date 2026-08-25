@@ -67,6 +67,8 @@ bun run tauri build --no-bundle
 bun run tauri android build --debug --apk --target aarch64 --ci
 ```
 
+WindowsでAndroidビルドを実行する場合、TauriがRustライブラリを`jniLibs`へシンボリックリンクするため、WindowsのDeveloper Modeまたは`SeCreateSymbolicLinkPrivilege`が必要になる。権限を利用できない環境では、RustのAndroidターゲットのコンパイル成功だけをローカルで確認し、GitHub ActionsのLinux環境でAPK生成まで成功することを必ず確認する。
+
 ローカルで署名付きインストーラーも確認する場合:
 
 ```powershell
