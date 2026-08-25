@@ -393,6 +393,7 @@ try {
       findChrome(),
       '--headless=new',
       '--disable-gpu',
+      '--disable-dev-shm-usage',
       '--no-sandbox',
       '--lang=ja-JP',
       `--remote-debugging-port=${DEBUG_PORT}`,
@@ -400,20 +401,24 @@ try {
       '--window-size=390,844',
       APP_URL,
     ],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { stdout: 'pipe', stderr: 'inherit' },
   );
-  await waitFor(async () => {
-    if (chrome.exitCode !== null) throw new Error(`Chrome exited with code ${chrome.exitCode}`);
-    try {
-      return (
-        await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, {
-          signal: AbortSignal.timeout(500),
-        })
-      ).ok;
-    } catch {
-      return false;
-    }
-  }, 'Chrome DevTools endpoint did not start');
+  await waitFor(
+    async () => {
+      if (chrome.exitCode !== null) throw new Error(`Chrome exited with code ${chrome.exitCode}`);
+      try {
+        return (
+          await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, {
+            signal: AbortSignal.timeout(500),
+          })
+        ).ok;
+      } catch {
+        return false;
+      }
+    },
+    'Chrome DevTools endpoint did not start',
+    30_000,
+  );
 
   const targets = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`).then((response) =>
     response.json(),
