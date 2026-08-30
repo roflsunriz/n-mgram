@@ -13,6 +13,7 @@ const APP_HEADERS = {
 const APP_USER_AGENT = 'Nicomanga/5.0.0/sdk/54.0.0Nicomanga';
 const MAX_PAGE_IMAGE_BYTES = 32 * 1024 * 1024;
 const PAGE_IMAGE_REQUEST_TIMEOUT_MS = 20_000;
+const DEV_PAGE_IMAGE_PROXY_PATH = '/__n-mgram-image';
 const BLOCKED_IMAGE_URL_MARKERS = ['image_5f0ecf23aed2e.png'];
 const BLOCKED_IMAGE_DIGESTS = new Set([
   'c0bb95acdefac920e62af2da8d7eef91521d1782a83f80b1b7f9c04ebd3ca008',
@@ -367,7 +368,11 @@ export async function resolvePageImage(
 ): Promise<ResolvedPageImage> {
   if (isBlockedImageUrl(url)) return { blocked: true };
 
-  if (!isTauri()) return { blocked: false, source: url, byteLength: 0 };
+  const runningInTauri = isTauri();
+  const useDevelopmentProxy = import.meta.env.DEV && import.meta.env.MODE !== 'test';
+  if (!runningInTauri && !useDevelopmentProxy) {
+    return { blocked: false, source: url, byteLength: 0 };
+  }
 
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
@@ -375,14 +380,19 @@ export async function resolvePageImage(
   const timeout = window.setTimeout(() => controller.abort(), PAGE_IMAGE_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await tauriFetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'image/*',
-        ...createAppHeaders(true),
-        Referer: 'https://lovehug.net',
-      },
-    });
+    const response = runningInTauri
+      ? await tauriFetch(url, {
+          signal: controller.signal,
+          headers: {
+            Accept: 'image/*',
+            ...createAppHeaders(true),
+            Referer: 'https://lovehug.net',
+          },
+        })
+      : await fetch(`${DEV_PAGE_IMAGE_PROXY_PATH}?url=${encodeURIComponent(url)}`, {
+          signal: controller.signal,
+          headers: { Accept: 'image/*' },
+        });
     if (!response.ok) {
       const retryable =
         response.status === 408 ||

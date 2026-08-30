@@ -9,6 +9,8 @@ const DEBUG_PORT = 9333;
 const APP_URL = `http://127.0.0.1:${APP_PORT}/`;
 const API_HOST = 'business.wel.my.id';
 const IMAGE_HOST = 'ihlv1.xyz';
+const DEV_PAGE_IMAGE_PROXY_PATH = '/__n-mgram-image';
+const DEV_PAGE_IMAGE_PROXY_URL = new URL(DEV_PAGE_IMAGE_PROXY_PATH, APP_URL).toString();
 const currentChapter = 4;
 const currentPage = 4;
 const pageCount = 10;
@@ -180,12 +182,27 @@ function responseBody(value) {
 
 async function handleRequest(client, request) {
   const url = new URL(request.request.url);
-  if (url.hostname === IMAGE_HOST) {
+  const proxiedImageUrl =
+    url.pathname === DEV_PAGE_IMAGE_PROXY_PATH && url.searchParams.has('url')
+      ? new URL(url.searchParams.get('url'))
+      : undefined;
+  const imageUrl = url.hostname === IMAGE_HOST ? url : proxiedImageUrl;
+  if (imageUrl?.hostname === IMAGE_HOST) {
+    const label =
+      imageUrl.pathname
+        .split('/')
+        .pop()
+        ?.replace(/\.webp$/i, '') ?? 'image';
+    const colors = ['#e74c3c', '#2ecc71', '#3498db', '#f1c40f', '#9b59b6', '#e67e22'];
+    const pageNumber = Number(label.split('-').at(-1));
+    const color =
+      colors[(Number.isFinite(pageNumber) ? Math.max(1, pageNumber) - 1 : 0) % colors.length];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1024"><rect width="720" height="1024" fill="${color}"/><text x="360" y="540" text-anchor="middle" font-size="128" fill="white">${label}</text></svg>`;
     await client.send('Fetch.fulfillRequest', {
       requestId: request.requestId,
       responseCode: 200,
-      responseHeaders: [{ name: 'Content-Type', value: 'image/png' }],
-      body: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      responseHeaders: [{ name: 'Content-Type', value: 'image/svg+xml' }],
+      body: Buffer.from(svg).toString('base64'),
     });
     return;
   }
@@ -358,6 +375,55 @@ async function runScenarios(client) {
   );
   const deleted = await evaluate(client, `JSON.parse(localStorage.getItem('n-mgram.library'))`);
   assert(Object.keys(deleted.history).length === 0, 'Confirmed history deletion was not persisted');
+
+  console.log('E2E: inspecting page curl textures');
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  scenario = { chapterCount: 10, collectionChapterCount: 0, failChapters: false };
+  const rejectedProxyStatus = await evaluate(
+    client,
+    `fetch('${DEV_PAGE_IMAGE_PROXY_PATH}?url=https%3A%2F%2Fexample.com%2Fimage.webp').then((response)=>response.status)`,
+  );
+  assert(rejectedProxyStatus === 400, 'Development image proxy accepted an untrusted host');
+  await loadScenario(client, version4Library());
+  await click(client, '[data-testid="history-open-7"]');
+  await waitForSelector(client, '[data-testid="reader-mode-paged"]');
+  await click(client, '[data-testid="reader-mode-paged"]');
+  await waitFor(
+    async () =>
+      evaluate(
+        client,
+        `(()=>{const images=[...document.querySelectorAll('[data-reader-page-flip-page] img')];return images.length>=6&&images.every((image)=>image.complete&&image.naturalWidth>0)})()`,
+      ),
+    'Paged reader images did not load',
+  );
+  assert(
+    await evaluate(client, `Boolean(document.createElement('canvas').getContext('webgl2'))`),
+    'WebGL2 was unavailable in the page curl E2E environment',
+  );
+  await evaluate(client, `document.querySelector('.page-turn-left').click()`);
+  await waitFor(
+    async () =>
+      evaluate(
+        client,
+        `getComputedStyle(document.querySelector('.page-flip-2__curl-canvas')).display==='block'`,
+      ),
+    'WebGL page curl did not become visible',
+  );
+  const curlState = await evaluate(
+    client,
+    `(()=>{const canvas=document.querySelector('.page-flip-2__curl-canvas');const context=canvas.getContext('webgl2');const pixels=new Uint8Array(canvas.width*canvas.height*4);context.readPixels(0,0,canvas.width,canvas.height,context.RGBA,context.UNSIGNED_BYTE,pixels);let opaque=0;let chromatic=0;for(let index=0;index<pixels.length;index+=4){if(pixels[index+3]<16)continue;opaque+=1;const maximum=Math.max(pixels[index],pixels[index+1],pixels[index+2]);const minimum=Math.min(pixels[index],pixels[index+1],pixels[index+2]);if(maximum-minimum>20)chromatic+=1}return {canvasDisplay:getComputedStyle(canvas).display,canvasWidth:canvas.width,canvasHeight:canvas.height,opaquePixels:opaque,chromaticRatio:opaque>0?chromatic/opaque:0}})()`,
+  );
+  assert(curlState.canvasWidth > 0 && curlState.canvasHeight > 0, 'Page curl canvas was empty');
+  assert(curlState.opaquePixels > 1_000, 'Page curl did not render an opaque sheet');
+  assert(
+    curlState.chromaticRatio > 0.5,
+    `Page curl sheet did not contain the page image: ${JSON.stringify(curlState)}`,
+  );
 }
 
 const profile = await mkdtemp(join(tmpdir(), 'n-mgram-e2e-'));
@@ -392,7 +458,9 @@ try {
     [
       findChrome(),
       '--headless=new',
-      '--disable-gpu',
+      '--use-angle=swiftshader',
+      '--enable-unsafe-swiftshader',
+      '--disable-gpu-sandbox',
       '--disable-dev-shm-usage',
       '--no-sandbox',
       '--lang=ja-JP',
@@ -442,11 +510,23 @@ try {
   await client.send('Runtime.enable');
   await client.send('Page.enable');
   await client.send('Page.addScriptToEvaluateOnNewDocument', {
-    source:
-      "Object.defineProperty(Navigator.prototype, 'language', { get: () => 'ja-JP' }); Object.defineProperty(Navigator.prototype, 'languages', { get: () => ['ja-JP', 'ja'] });",
+    source: `
+      Object.defineProperty(Navigator.prototype, 'language', { get: () => 'ja-JP' });
+      Object.defineProperty(Navigator.prototype, 'languages', { get: () => ['ja-JP', 'ja'] });
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, options) {
+        return type === 'webgl2'
+          ? originalGetContext.call(this, type, { ...options, preserveDrawingBuffer: true })
+          : originalGetContext.call(this, type, options);
+      };
+    `,
   });
   await client.send('Fetch.enable', {
-    patterns: [{ urlPattern: `https://${API_HOST}/*` }, { urlPattern: `https://${IMAGE_HOST}/*` }],
+    patterns: [
+      { urlPattern: `https://${API_HOST}/*` },
+      { urlPattern: `https://${IMAGE_HOST}/*` },
+      { urlPattern: `${DEV_PAGE_IMAGE_PROXY_URL}*` },
+    ],
   });
   await client.send('Emulation.setLocaleOverride', { locale: 'ja-JP' });
   await client.send('Emulation.setDeviceMetricsOverride', {
@@ -462,7 +542,9 @@ try {
 
   await runScenarios(client);
   assert(errors.length === 0, `Browser exceptions occurred: ${errors.join('; ')}`);
-  console.log('History progress E2E passed: migration, new chapters, retry, delete, responsive UI');
+  console.log(
+    'E2E passed: history migration, new chapters, retry, delete, responsive UI, page curl textures',
+  );
 } finally {
   client?.close();
   chrome?.kill();
