@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { DisplayMode, PageFlip, ReadingDirection, SizeType } from 'page-flip-2';
 import type { ReaderFitMode } from '../storage/reader-settings-store';
 import { PageImage } from './page-image';
+import { installRtlLandscapeTexturePairing } from './page-flip-texture-pairing';
 import { getReaderSpread } from './reader-spread';
 
 const PAGE_WIDTH = 720;
@@ -70,9 +71,11 @@ export function ReaderPageFlip({
       if (data < initialPageCountRef.current) onPageChangeRef.current(data);
     });
     pageFlip.loadFromHTML(root.querySelectorAll<HTMLElement>('[data-reader-page-flip-page]'));
+    const restoreTexturePairing = installRtlLandscapeTexturePairing(pageFlip);
 
     return () => {
       pageFlipRef.current = undefined;
+      restoreTexturePairing();
       pageFlip.off('flip');
       pageFlip.destroy();
     };

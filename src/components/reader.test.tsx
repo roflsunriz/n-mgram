@@ -36,6 +36,7 @@ vi.mock('page-flip-2', () => {
     destroyed = false;
     private currentPage: number;
     private flipHandler?: (event: { data: number; object: PageFlipMock }) => void;
+    private readonly render = { setFlippingPage: () => undefined };
 
     constructor(_root: HTMLElement, settings: Record<string, unknown>) {
       this.settings = settings;
@@ -60,6 +61,22 @@ vi.mock('page-flip-2', () => {
 
     getCurrentPageIndex() {
       return this.currentPage;
+    }
+
+    getRender() {
+      return this.render;
+    }
+
+    getPageCollection() {
+      return { getPages: () => [] };
+    }
+
+    getOrientation() {
+      return 'landscape';
+    }
+
+    isRtl() {
+      return true;
     }
 
     flip(page: number) {
