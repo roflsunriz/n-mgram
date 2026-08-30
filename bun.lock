@@ -10,7 +10,7 @@
         "@tauri-apps/plugin-opener": "2.5.4",
         "@tauri-apps/plugin-process": "2.3.1",
         "@tauri-apps/plugin-updater": "2.10.1",
-        "page-flip-2": "0.3.0",
+        "page-flip-2": "0.3.4",
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "zod": "4.4.3",
@@ -468,7 +468,7 @@
 
     "p-locate": ["p-locate@5.0.0", "", { "dependencies": { "p-limit": "^3.0.2" } }, "sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw=="],
 
-    "page-flip-2": ["page-flip-2@0.3.0", "", {}, "sha512-IBA0Q12vVeFo8yppWuP9PzwqXqd9PpAiG78ey1NGUyAtLMlIElj8AEgMEboOX/Twt+mndIUKGajFm/5EYUUN4w=="],
+    "page-flip-2": ["page-flip-2@0.3.4", "", {}, "sha512-Sfn7o5UX2fCLJ4EgFjeNfM48rDeZvZCGsURNZjjd0dTez2sK16m0ddrBYDBY9qf5AFq5LYDu3tud6M0/hM2dUg=="],
 
     "parse5": ["parse5@8.0.1", "", { "dependencies": { "entities": "^8.0.0" } }, "sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw=="],
 
