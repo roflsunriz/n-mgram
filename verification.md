@@ -2,6 +2,8 @@
 
 ## 依存更新（2026-09-13）
 
+リリース要否の確認として、同じBun 1.3.14でv0.9.2と更新後をビルドした。`dist/` の8ファイルがSHA-256で全件一致し、`src/`・`src-tauri/`・`public/`・`scripts/`・`vite.config.ts` にも差分がなかったため、今回のテスト・lint依存更新では配布バイナリを更新しない。
+
 - Bun 1.3.14でVitest 4.1.11へロックを再生成し、`bun install --frozen-lockfile` の成功を確認。
 - `bun audit` で検出されたBrowserslist・baseline-browser-mappingを修正版へ固定し、既知脆弱性0件を確認。PR対象のVitestだけで監査を打ち切らない。
 - `bun run check` のlint、format、型検査、25ファイル130テスト、Webビルド、既存Chrome E2Eが成功。

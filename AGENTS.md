@@ -35,3 +35,4 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 
 - npm向けDependabot PRでは `package.json` だけが変わり、Bunのロックが更新されない場合がある（PR #1で確認）。CI定義と同じBunで `bun install` を実行し、`bun.lock` の差分と `bun install --frozen-lockfile` の成功を確認する。
 - 間接依存の脆弱性はPR対象外にも発生するため、更新時は `bun audit` と `bun run check` を実行する。overridesを解除・変更するときも、監査0件と既存テストを維持する。
+- 開発用依存の変更だけで配布版を更新するかは、アプリ・Rust・本番依存の差分と、同じ環境で作った既存タグ／更新後の `dist/` のファイル一覧・ハッシュで判断する。Vitestの更新番号だけを理由に配布版を上げない。2026-09-13の比較結果は `verification.md` を参照する。
