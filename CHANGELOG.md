@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- DependabotのVitest更新後もCIで依存を再現できるよう、Vitest 4.1.11に合わせてBunのロックファイルを再生成。
+
+### Security
+
+- 開発ツールの入力による停止・メモリ消費の既知脆弱性を解消するため、Browserslistとbaseline-browser-mappingの間接依存を監査済み修正版へ固定。
+
+### Changed
+
+- 依存更新時のロック再生成と検証手順、開発参加・サポート・脆弱性報告の案内を整備。
+
 ## [0.9.2] - 2026-08-30
 
 ### Fixed

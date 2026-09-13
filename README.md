@@ -4,6 +4,10 @@
 
 WindowsデスクトップとAndroidに対応するビューアです。
 
+## 使い始める
+
+[GitHub Releases](https://github.com/roflsunriz/n-mgram/releases)から、Windows用インストーラーまたはAndroid用APKを取得します。更新方法は[更新手順](how-to-update.md)、不具合の相談は[サポート](SUPPORT.md)を参照してください。
+
 ## 開発
 
 Windows版の前提: Bun、Rust stable、Windows WebView2。

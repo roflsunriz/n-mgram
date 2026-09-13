@@ -1,5 +1,12 @@
 # 検証手順
 
+## 依存更新（2026-09-13）
+
+- Bun 1.3.14でVitest 4.1.11へロックを再生成し、`bun install --frozen-lockfile` の成功を確認。
+- `bun audit` で検出されたBrowserslist・baseline-browser-mappingを修正版へ固定し、既知脆弱性0件を確認。PR対象のVitestだけで監査を打ち切らない。
+- `bun run check` のlint、format、型検査、25ファイル130テスト、Webビルド、既存Chrome E2Eが成功。
+- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` と `bun run tauri build --no-bundle` が成功。Android APKはGitHub Actionsの `Android APK compile` で確認する。WindowsでのAndroid APK生成はシンボリックリンク権限が必要なため、権限を利用できない場合の代替は `how-to-update.md` に従う。
+
 ## ページめくりの表裏画像
 
 ### 自動検証

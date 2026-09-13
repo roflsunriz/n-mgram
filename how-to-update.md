@@ -58,6 +58,8 @@ gh secret set ANDROID_KEY_PASSWORD --repo roflsunriz/n-mgram
 
 ### 通常の開発更新
 
+依存関係を変更する場合は、CI定義のBunバージョンを使って `bun install` で `bun.lock` を再生成し、`package.json` と一緒に差分を確認する。npm向けDependabot PRでもロック更新は別途必要になる場合がある。`--frozen-lockfile` を外したままCIを通す運用にはしない。問題があれば依存定義とロックを同じコミット単位で戻して再検証する。
+
 ```powershell
 git pull --ff-only
 bun install --frozen-lockfile

@@ -30,3 +30,8 @@ bun run tauri build --no-bundle
 ```
 
 APIは非公式仕様なので、レスポンスを必ずランタイム検証し、アクセス頻度を抑える。
+
+## 依存更新の確認
+
+- npm向けDependabot PRでは `package.json` だけが変わり、Bunのロックが更新されない場合がある（PR #1で確認）。CI定義と同じBunで `bun install` を実行し、`bun.lock` の差分と `bun install --frozen-lockfile` の成功を確認する。
+- 間接依存の脆弱性はPR対象外にも発生するため、更新時は `bun audit` と `bun run check` を実行する。overridesを解除・変更するときも、監査0件と既存テストを維持する。
