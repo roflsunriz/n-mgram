@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- CI と Dependabot の分類の実行順が前後しても更新を取りこぼさないよう、同じ PR 番号と head SHA を再照合する経路を追加した。
 - DependabotのVitest更新後もCIで依存を再現できるよう、Vitest 4.1.11に合わせてBunのロックファイルを再生成。
 
 ### Security
