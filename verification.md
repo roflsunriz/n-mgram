@@ -41,3 +41,5 @@ WebGL2を利用できない環境では従来描画へ自動復旧するため�
 `.github/workflows/dependabot-automation.yml` を actionlint で検査し、PR 用 workflow 名（CI）と一致することを確認する。Dependabot の patch／minor かつ全 PR チェック成功の場合だけ取り込み、major・古い SHA・再失敗は残す。
 
 実際の Dependabot PR がまだない場合、動作経路は未検証として扱う。実 PR 発生後に自動化ジョブ、CI の再試行、マージ結果を確認する。
+
+初回の GitHub CI は追加した Dependabot 設定と workflow の Prettier 書式で失敗した。該当 YAML を整形し、actionlint と Prettier の検査を再実行した。
