@@ -125,3 +125,9 @@ Android端末では初回だけブラウザまたはファイル管理アプリ�
 - ローカルビルド障害: `node_modules`と`src-tauri/target`を再生成する。アプリデータを削除しない限り、履歴、読書位置、お気に入りは保持される。
 - 秘密鍵漏えい: 直ちにReleaseを停止する。既存アプリへ組み込まれた公開鍵は自動で差し替えられないため、単純なSecret変更だけでは安全な鍵移行にならない。
 - Android署名鍵の紛失・漏えい: 既存アプリと同じIDへの安全な更新ができなくなる。キーストアのバックアップを確認し、漏えい時はAPK配布を停止して利用者へ明示する。
+
+## Dependabot PR の更新
+
+前提は `.github/dependabot.yml` と PR 用 CI（CI）です。更新 PR の head SHA と `gh pr checks <PR番号>` の結果を確認してください。patch／minor は全チェック成功後に自動取り込みされます。初回 CI 失敗は failed jobs のみを 1 回再実行し、再失敗時は指定した lockfile を再生成し、CI を再実行します。
+
+設定を変えたときは `actionlint .github/workflows/dependabot-automation.yml` と実際の PR の Actions 結果を確認します。問題があれば呼び出し先の共通 workflow SHA を直前の検証済み値へ戻すコミットを push します。取り込まれた依存更新に問題があれば通常の revert コミットで復旧します。
