@@ -1,5 +1,18 @@
 # 検証手順
 
+## CI修正・依存更新（2026-09-28）
+
+- CI指定のBun 1.3.14でfrozen installと`bun run check`に成功。lint、format、型検査、130テスト、Web build、DevTools可変ポートを使うChrome E2Eが通り、`bun audit`は脆弱性0件。
+- `cargo fmt`とWindowsデスクトップビルドに成功。Android ARM64 RustライブラリもJava 17でコンパイルしたが、Tauriは`jniLibs`へのシンボリックリンク作成時にWindows権限で停止したため、APK生成はGitHub ActionsのLinux jobで確認する。Java 25での先行試行はGradleの対応範囲外警告が出たため、以後はCIと同じJava 17で検証する。
+- Tauriプラグインはnpm/Rustのmajor/minorを同期し、`cargo update -v`でsemver互換更新を確認した。http Rust 2.7.0はnpmに2.8.0が未公開のためexact pin。TypeScript 7は`typescript-eslint`のpeer範囲`<6.1.0`のため保留。`generic-array` 0.14.9も`crypto-common` 0.1.7のexact pinで選択できず、GTK向け旧toml群は`system-deps`の依存制約内に維持した。
+- `cargo audit`は553依存を検査し脆弱性0件。7件の未保守／unsound警告はGTK 0.18（TauriのLinux Wry経路）とTauri HTTP 2.7.0が固定する`urlpattern` 0.3.0の推移依存で、Cargo treeで由来を確認した。警告を抑制せず、上流が互換修正版を出した時点で再評価する。
+
+## 依存更新（2026-09-28）
+
+- Tauri JavaScript API／CLIを2.12.0へ更新し、http 2.7.0・opener 2.6.0・process 2.4.0・updater 2.13.0のnpm版とRust版をmajor/minorで同期した。HTTP npm 2.8.0は未公開のためRust 2.7.0をexact pinした。React/React DOM 19.3.0、Zod 4.6.5とlint・test・build開発依存も確認済み最新版へ更新。
+- TypeScript 7.0.2は`typescript-eslint` 8.70.1のpeer範囲が`<6.1.0`のため適用せず、TypeScript 6.0.3を維持した。次回はparserが対応してから同時更新する。
+- `bun audit`は脆弱性0件。更新後はCI定義のBun 1.3.14でfrozen install、`bun run check`、Rust desktop/Android buildを確認する。
+
 ## 依存更新（2026-09-13）
 
 リリース要否の確認として、同じBun 1.3.14でv0.9.2と更新後をビルドした。`dist/` の8ファイルがSHA-256で全件一致し、`src/`・`src-tauri/`・`public/`・`scripts/`・`vite.config.ts` にも差分がなかったため、今回のテスト・lint依存更新では配布バイナリを更新しない。
