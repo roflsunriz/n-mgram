@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const APP_PORT = 1421;
-const DEBUG_PORT = 9333;
 const APP_URL = `http://127.0.0.1:${APP_PORT}/`;
 const API_HOST = 'business.wel.my.id';
 const IMAGE_HOST = 'ihlv1.xyz';
@@ -82,7 +81,16 @@ function findChrome() {
 async function waitFor(check, message, timeout = 10_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    if (await check()) return;
+    try {
+      if (await check()) return;
+    } catch (error) {
+      if (
+        error?.code !== -32000 ||
+        !error.message.includes('Inspected target navigated or closed')
+      ) {
+        throw error;
+      }
+    }
     await Bun.sleep(50);
   }
   throw new Error(message);
@@ -106,8 +114,11 @@ class CdpClient {
       if (message.id && this.pending.has(message.id)) {
         const pending = this.pending.get(message.id);
         this.pending.delete(message.id);
-        if (message.error) pending.reject(new Error(JSON.stringify(message.error)));
-        else pending.resolve(message.result);
+        if (message.error) {
+          const error = new Error(JSON.stringify(message.error));
+          error.code = message.error.code;
+          pending.reject(error);
+        } else pending.resolve(message.result);
         return;
       }
       const listeners = this.listeners.get(message.method) ?? [];
@@ -464,19 +475,25 @@ try {
       '--disable-dev-shm-usage',
       '--no-sandbox',
       '--lang=ja-JP',
-      `--remote-debugging-port=${DEBUG_PORT}`,
+      '--remote-debugging-port=0',
       `--user-data-dir=${profile}`,
       '--window-size=390,844',
       APP_URL,
     ],
     { stdout: 'pipe', stderr: 'inherit' },
   );
+  const activePortFile = join(profile, 'DevToolsActivePort');
+  let debugPort;
   await waitFor(
     async () => {
       if (chrome.exitCode !== null) throw new Error(`Chrome exited with code ${chrome.exitCode}`);
+      if (!existsSync(activePortFile)) return false;
+      const [portText] = (await Bun.file(activePortFile).text()).split('\n');
+      debugPort = Number(portText);
+      if (!Number.isInteger(debugPort) || debugPort < 1 || debugPort > 65_535) return false;
       try {
         return (
-          await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, {
+          await fetch(`http://127.0.0.1:${debugPort}/json/version`, {
             signal: AbortSignal.timeout(500),
           })
         ).ok;
@@ -488,7 +505,7 @@ try {
     30_000,
   );
 
-  const targets = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`).then((response) =>
+  const targets = await fetch(`http://127.0.0.1:${debugPort}/json`).then((response) =>
     response.json(),
   );
   const page = targets.find((target) => target.type === 'page');

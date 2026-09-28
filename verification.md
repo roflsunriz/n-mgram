@@ -21,6 +21,7 @@ bun run tauri build --no-bundle
 
 `bun run check` に含まれるChrome E2Eでは、次を確認する。
 
+- DevToolsはChromeが割り当てた専用の空きポートへ接続し、ページ遷移中の一時的なCDP評価エラーから復帰する。
 - 開発用画像中継が許可済みの `ihlv1.xyz` だけを受け付ける。
 - ページ画像を検証後の `blob:` URLとして読み込む。
 - `page-flip-2` の遅延chunkがVite開発サーバーから読み込まれる。
