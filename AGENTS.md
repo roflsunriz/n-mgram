@@ -42,3 +42,7 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 - 2026-09-23以降は Dependabot の `bun` エコシステムを使用し、CI 再失敗時の自動修復は `bun.lock` だけを変更する。修復後は `workflow_dispatch` で読み取り権限の CI を実行し、checkout の認証情報を残さない。根拠は `.github/dependabot.yml` と `.github/workflows/dependabot-automation.yml`。
 - 間接依存の脆弱性はPR対象外にも発生するため、更新時は `bun audit` と `bun run check` を実行する。overridesを解除・変更するときも、監査0件と既存テストを維持する。
 - 開発用依存の変更だけで配布版を更新するかは、アプリ・Rust・本番依存の差分と、同じ環境で作った既存タグ／更新後の `dist/` のファイル一覧・ハッシュで判断する。Vitestの更新番号だけを理由に配布版を上げない。2026-09-13の比較結果は `verification.md` を参照する。
+
+## CI監査修復の注意
+
+- 2026-10-05: jsdom30.1.2はundici ^8.11.2を要求する。旧override7.29.0は公式range外で新規脆弱性も残すため解除した。jsdom更新時は親packageの要求範囲を確認し、監査だけでなくVitestのDOMテストとChrome E2Eも実行する。
