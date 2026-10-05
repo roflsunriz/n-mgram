@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/roflsunriz/n-mgram/actions/workflows/ci.yml/badge.svg)](https://github.com/roflsunriz/n-mgram/actions/workflows/ci.yml)
 
-WindowsデスクトップとAndroidに対応するビューアです。
+WindowsデスクトップとAndroidに対応する漫画ビューアです。
 
 ## 使い始める
 
@@ -17,14 +17,14 @@ bun install
 bun run tauri dev
 ```
 
-品質チェックと署名不要のデスクトップコンパイル:
+品質チェックと署名不要のデスクトップコンパイルは、次のコマンドで実行します。
 
 ```powershell
 bun run check
 bun run tauri build --no-bundle
 ```
 
-Android版の前提: Android Studio、JDK 17、Android SDK、NDK、RustのAndroidターゲット。初回だけAndroidプロジェクトを生成する場合は`bun run tauri android init`、APKの確認ビルドは次のコマンドを使います。
+Android版にはAndroid Studio、JDK 17、Android SDK、NDK、RustのAndroidターゲットが必要です。初回にプロジェクトの生成が必要な場合は`bun run tauri android init`を使います。APKの確認ビルドは次のコマンドで実行します。
 
 ```powershell
 bun run tauri android build --debug --apk --target aarch64 --ci
