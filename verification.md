@@ -67,3 +67,10 @@ WebGL2を利用できない環境では従来描画へ自動復旧するため�
 - 既存の固有質問・入力例・必須条件を原文と照合。READMEのリンク・画像・コマンド・条件を確認し、裏付けがある誤記だけを訂正した。
 - 既存のCI、Dependabot、labeler、ライセンスのファイル内容は比較元から変更していない。
 - 製品のビルド・インストール・実機操作、GitHub上のフォーム表示、公開後CIは今回の静的検証に含めない。公開後に実際の受付表示と必要ラベルの適用を確認する。
+
+## 2026-10-05: 公開後の依存監査修復
+
+- 元の受付整備PRはマージ済みだが、同じmainのCIでは依存監査が失敗していた。既存CIや監査条件は変えず、依存定義とlockを修復した。
+- 公式npm registryとGitHub Advisory Databaseで修正版と依存範囲を確認した。brace-expansion 5.0.12を採用し、固定lockと全依存監査（0件）、lint・型・ビルドを検証する。
+- jsdom30.1.2とundici8.11.2の公式依存範囲を保持し、bun run checkのVitest・Chrome E2E・全体formatも確認する。WindowsとAndroidのコンパイルはPR CI結果で確認する。
+- ローカル結果: CIと同じBun（1.3.14）で固定lockとbun audit成功（既知脆弱性0件）。bun run checkも成功し、25ファイル・130テストとChrome E2E（履歴移行、新着章、失敗時retry、削除、responsive、ページカール）を確認。

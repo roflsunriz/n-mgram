@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Security
+
+- brace-expansion の既知DoSを解消するため、既存 override を5.0.12へ更新し、Bunのlockを再生成した。
+- DOMテストの公式依存範囲と脆弱性修正版をそろえるため、jsdomを30.1.2へ更新し、undiciを旧7.29.0へ固定するoverrideを解除した。
+
 ### Fixed
 
 - CI のChrome E2Eがページ再読み込み時のCDP一時エラーや使用中ポートで不安定にならないよう、DevToolsの空きポートを自動取得し、遷移中の評価を再試行するよう修正。
