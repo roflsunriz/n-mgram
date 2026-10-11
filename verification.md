@@ -2,6 +2,7 @@
 
 ## Dependabot PR と依存監査（2026-10-11）
 
+- PR #22 のRust HTTP 2.8.1だけを適用したCIは、npm HTTP 2.7.0とのmajor/minor不一致でWindows・Androidとも失敗した。npm 2.8.2を同じPRへ追加し、Cargo.lockを最新mainから再生成して両方を2.8系へ揃えた。ローカルではfrozen install、監査0件、全品質検査、Rust書式、Windowsデスクトップビルドに成功した。`cargo audit` は脆弱性0件で、既存の未保守・unsound警告が2件残った。Android APKはCIで再確認する。
 - `source-map-js` 1.2.1 は `jsdom` と `vite` の間接依存で、`bun audit` がGHSA-68fv-2mgg-jv7qを1件検出した。1.2.2をoverrideで固定し、`bun install --frozen-lockfile` と監査0件を確認した。
 - ローカルBun 1.4.0でlint、format、型検査、25ファイル130テスト、Webビルドに成功した。Windows Chrome E2Eは初回に10秒の履歴タブ待機で失敗したが、30秒への延長後に履歴移行・新章・再試行・削除・レスポンシブ表示・ページカールの全シナリオが成功した。実行時にはAdGuardのlocalhost向けリソースが読み込まれていた。
 - 最初のmain CIでは、ソフトウェアWebGLのページカールが一時表示中にCDPのポーリングから見えず失敗した。クリック直後からページ内の描画フレームで可視状態とピクセルを採取し、紙面の色が確認できた場合だけ成功とする方式に変更した。Windows Chrome E2Eは再実行して成功した。Linux CIの結果も確認する。

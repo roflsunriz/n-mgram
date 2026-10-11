@@ -33,7 +33,7 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 
 ## 依存更新の注意
 
-- Tauriプラグインはnpm版とRustクレート版のmajor/minorが一致しないとデスクトップ・Androidのコンパイルが失敗する。Dependabotのcargo PRをマージする前に `bun pm view` で対応するnpm版の存在を確認し、なければnpm版を先に上げてからマージする。2026-09-28にhttp 2.7.0もnpm公開済みと確認し、Rust版と同期した。
+- Tauriプラグインはnpm版とRustクレート版のmajor/minorが一致しないとデスクトップ・Androidのコンパイルが失敗する。Dependabotのcargo PRをマージする前に `bun pm view` で対応するnpm版の存在を確認し、同じPRで両方を更新する。2026-10-11にhttp npm 2.8.2とRust 2.8.1の組み合わせを確認した。PR #22のRust版だけの更新では両CIがバージョン不一致で失敗した。
 - 旧ベースのDependabot PRでCIが失敗する場合は `@dependabot rebase` で最新mainに追従させると解消することがある（prettier修正や先行マージとの競合時）。
 
 ## 依存更新の確認
