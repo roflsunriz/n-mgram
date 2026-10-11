@@ -553,7 +553,7 @@ try {
     mobile: true,
   });
   await client.send('Page.navigate', { url: APP_URL });
-  await waitForSelector(client, '[data-testid="library-tab-history"]');
+  await waitForSelector(client, '[data-testid="library-tab-history"]', 30_000);
   const browserLanguage = await evaluate(client, 'navigator.language');
   assert(browserLanguage === 'ja-JP', `Browser locale override failed: ${browserLanguage}`);
 

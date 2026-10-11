@@ -6,11 +6,13 @@
 
 ### Security
 
+- CI の依存監査で検出された `source-map-js` のサービス拒否脆弱性を解消するため、間接依存を修正版へ固定した。
 - brace-expansion の既知DoSを解消するため、既存 override を5.0.12へ更新し、Bunのlockを再生成した。
 - DOMテストの公式依存範囲と脆弱性修正版をそろえるため、jsdomを30.1.2へ更新し、undiciを旧7.29.0へ固定するoverrideを解除した。
 
 ### Fixed
 
+- Windows の低速な初回読み込みでも Chrome E2E が履歴タブの表示前に終了しないよう、初回表示の待機時間を延長した。
 - CI のChrome E2Eがページ再読み込み時のCDP一時エラーや使用中ポートで不安定にならないよう、DevToolsの空きポートを自動取得し、遷移中の評価を再試行するよう修正。
 - CI と Dependabot の分類の実行順が前後しても更新を取りこぼさないよう、同じ PR 番号と head SHA を再照合する経路を追加した。
 - DependabotのVitest更新後もCIで依存を再現できるよう、Vitest 4.1.11に合わせてBunのロックファイルを再生成。

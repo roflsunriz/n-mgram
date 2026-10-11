@@ -46,3 +46,4 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 ## CI監査修復の注意
 
 - 2026-10-05: jsdom30.1.2はundici ^8.11.2を要求する。旧override7.29.0は公式range外で新規脆弱性も残すため解除した。jsdom更新時は親packageの要求範囲を確認し、監査だけでなくVitestのDOMテストとChrome E2Eも実行する。
+- 2026-10-11: `source-map-js` 1.2.1は `jsdom` と `vite` の両経路から導入され、`bun audit` のGHSA-68fv-2mgg-jv7qに該当した。`package.json` のoverrideで1.2.2へ固定し、`bun.lock` と監査結果を同時に確認する。WindowsのChrome E2Eは、この環境でAdGuardによるlocalhostへのスクリプト注入が観測され、初回のViteモジュール読み込みが10秒を超えたため、初回履歴タブの待機を30秒にしている。根拠は `scripts/e2e-history-progress.mjs` と2026-10-11の実測。

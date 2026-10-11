@@ -1,5 +1,11 @@
 # 検証手順
 
+## Dependabot PR と依存監査（2026-10-11）
+
+- `source-map-js` 1.2.1 は `jsdom` と `vite` の間接依存で、`bun audit` がGHSA-68fv-2mgg-jv7qを1件検出した。1.2.2をoverrideで固定し、`bun install --frozen-lockfile` と監査0件を確認した。
+- ローカルBun 1.4.0でlint、format、型検査、25ファイル130テスト、Webビルドに成功した。Windows Chrome E2Eは初回に10秒の履歴タブ待機で失敗したが、30秒への延長後に履歴移行・新章・再試行・削除・レスポンシブ表示・ページカールの全シナリオが成功した。実行時にはAdGuardのlocalhost向けリソースが読み込まれていた。
+- Rust・AndroidコンパイルおよびCI定義と同じBun 1.3.14での検証は、統合後のGitHub Actions結果で確認する。
+
 ## CI修正・依存更新（2026-09-28）
 
 - CI指定のBun 1.3.14でfrozen installと`bun run check`に成功。lint、format、型検査、130テスト、Web build、DevTools可変ポートを使うChrome E2Eが通り、`bun audit`は脆弱性0件。
