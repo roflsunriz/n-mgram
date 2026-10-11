@@ -9,6 +9,7 @@
 - CI の依存監査で検出された `source-map-js` のサービス拒否脆弱性を解消するため、間接依存を修正版へ固定した。
 - brace-expansion の既知DoSを解消するため、既存 override を5.0.12へ更新し、Bunのlockを再生成した。
 - DOMテストの公式依存範囲と脆弱性修正版をそろえるため、jsdomを30.1.2へ更新し、undiciを旧7.29.0へ固定するoverrideを解除した。
+- 開発ツールの入力による停止・メモリ消費の既知脆弱性を解消するため、Browserslistとbaseline-browser-mappingの間接依存を監査済み修正版へ固定。
 
 ### Fixed
 
@@ -16,17 +17,13 @@
 - Linux CI の高負荷時にもページカールを検証できるよう、表示中の各描画フレームで紙面のピクセルを取得する方式に修正した。
 - CI のChrome E2Eがページ再読み込み時のCDP一時エラーや使用中ポートで不安定にならないよう、DevToolsの空きポートを自動取得し、遷移中の評価を再試行するよう修正。
 - CI と Dependabot の分類の実行順が前後しても更新を取りこぼさないよう、同じ PR 番号と head SHA を再照合する経路を追加した。
-- DependabotのVitest更新後もCIで依存を再現できるよう、Vitest 4.1.11に合わせてBunのロックファイルを再生成。
-
-### Security
-
-- 開発ツールの入力による停止・メモリ消費の既知脆弱性を解消するため、Browserslistとbaseline-browser-mappingの間接依存を監査済み修正版へ固定。
+- DependabotのVitest更新後もCIで依存を再現できるよう、Bunのロックファイルを再生成。
 
 ### Changed
 
 - Tauri の HTTP プラグインをデスクトップ・Androidの両方で利用できるよう、npm版とRust版を互換性のある2.8系へ更新した。
+- Dependabot統合後も互換性と監査結果を維持するため、Tauriのnpm版とRust版、開発ツールを確認済みの互換パッチへ更新した。TypeScript 7は`typescript-eslint`のpeer制約があるため保留した。
 - 不具合・機能提案などの受付とPRの記入形式を揃え、プロジェクト固有の確認項目を残した。 READMEは既存の意味と手順を保ち、実装と異なる説明や読みにくい表現を修正した。
-
 - Tauriプラグインのデスクトップ・Androidビルドを維持し、依存脆弱性修正版を取り込めるよう、npm版とRust版のmajor/minorをそろえて更新し、React・Zod・開発ツールを互換範囲内の最新版へ更新。
 - 依存更新を安全に省力化するため、Dependabot の patch／minor PR を既存 CI の全チェック成功後に自動取り込みし、失敗ジョブを一度再実行する設定を追加した。
 - 依存更新時のロック再生成と検証手順、開発参加・サポート・脆弱性報告の案内を整備。

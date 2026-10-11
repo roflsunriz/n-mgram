@@ -34,7 +34,7 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 ## 依存更新の注意
 
 - Tauriプラグインはnpm版とRustクレート版のmajor/minorが一致しないとデスクトップ・Androidのコンパイルが失敗する。Dependabotのcargo PRをマージする前に `bun pm view` で対応するnpm版の存在を確認し、同じPRで両方を更新する。2026-10-11にhttp npm 2.8.2とRust 2.8.1の組み合わせを確認した。PR #22のRust版だけの更新では両CIがバージョン不一致で失敗した。
-- 旧ベースのDependabot PRでCIが失敗する場合は `@dependabot rebase` で最新mainに追従させると解消することがある（prettier修正や先行マージとの競合時）。
+- 旧ベースのDependabot PRでCIが失敗する場合は `@dependabot rebase` で最新mainに追従させると解消することがある（prettier修正や先行マージとの競合時）。2026-10-11のPR #19・#20・#22では自動修復コミットがあるためrebaseが拒否され、`@dependabot recreate` で再作成してからCIを再実行した。
 
 ## 依存更新の確認
 
@@ -48,3 +48,4 @@ APIは非公式仕様なので、レスポンスを必ずランタイム検証�
 - 2026-10-05: jsdom30.1.2はundici ^8.11.2を要求する。旧override7.29.0は公式range外で新規脆弱性も残すため解除した。jsdom更新時は親packageの要求範囲を確認し、監査だけでなくVitestのDOMテストとChrome E2Eも実行する。
 - 2026-10-11: `source-map-js` 1.2.1は `jsdom` と `vite` の両経路から導入され、`bun audit` のGHSA-68fv-2mgg-jv7qに該当した。`package.json` のoverrideで1.2.2へ固定し、`bun.lock` と監査結果を同時に確認する。WindowsのChrome E2Eは、この環境でAdGuardによるlocalhostへのスクリプト注入が観測され、初回のViteモジュール読み込みが10秒を超えたため、初回履歴タブの待機を30秒にしている。根拠は `scripts/e2e-history-progress.mjs` と2026-10-11の実測。
 - 2026-10-11: Linux CIのソフトウェアWebGLでは、ページカールの一時表示をCDPで50msごとにポーリングすると描画を見逃すことがあった。E2Eではクリック直後からページ内の描画フレームでcanvasの表示とピクセルを観測し、実画像色を確認する。根拠は `scripts/e2e-history-progress.mjs` とmain CI run 38124517008。
+- 2026-10-11: `typescript-eslint` 8.71.1の公式peer範囲はTypeScript `<6.1.0`で、TypeScript 7.0.2をまだ適用できない。`bun pm view typescript-eslint@8.71.1 peerDependencies`で再確認してから更新する。
