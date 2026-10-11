@@ -416,19 +416,11 @@ async function runScenarios(client) {
     await evaluate(client, `Boolean(document.createElement('canvas').getContext('webgl2'))`),
     'WebGL2 was unavailable in the page curl E2E environment',
   );
-  await evaluate(client, `document.querySelector('.page-turn-left').click()`);
-  await waitFor(
-    async () =>
-      evaluate(
-        client,
-        `getComputedStyle(document.querySelector('.page-flip-2__curl-canvas')).display==='block'`,
-      ),
-    'WebGL page curl did not become visible',
-  );
   const curlState = await evaluate(
     client,
-    `(()=>{const canvas=document.querySelector('.page-flip-2__curl-canvas');const context=canvas.getContext('webgl2');const pixels=new Uint8Array(canvas.width*canvas.height*4);context.readPixels(0,0,canvas.width,canvas.height,context.RGBA,context.UNSIGNED_BYTE,pixels);let opaque=0;let chromatic=0;for(let index=0;index<pixels.length;index+=4){if(pixels[index+3]<16)continue;opaque+=1;const maximum=Math.max(pixels[index],pixels[index+1],pixels[index+2]);const minimum=Math.min(pixels[index],pixels[index+1],pixels[index+2]);if(maximum-minimum>20)chromatic+=1}return {canvasDisplay:getComputedStyle(canvas).display,canvasWidth:canvas.width,canvasHeight:canvas.height,opaquePixels:opaque,chromaticRatio:opaque>0?chromatic/opaque:0}})()`,
+    `(()=>new Promise((resolve)=>{const canvas=document.querySelector('.page-flip-2__curl-canvas');const deadline=performance.now()+10000;let state={canvasDisplay:getComputedStyle(canvas).display,canvasWidth:canvas.width,canvasHeight:canvas.height,opaquePixels:0,chromaticRatio:0};function sample(){if(getComputedStyle(canvas).display==='block'){const context=canvas.getContext('webgl2');const pixels=new Uint8Array(canvas.width*canvas.height*4);context.readPixels(0,0,canvas.width,canvas.height,context.RGBA,context.UNSIGNED_BYTE,pixels);let opaque=0;let chromatic=0;for(let index=0;index<pixels.length;index+=4){if(pixels[index+3]<16)continue;opaque+=1;const maximum=Math.max(pixels[index],pixels[index+1],pixels[index+2]);const minimum=Math.min(pixels[index],pixels[index+1],pixels[index+2]);if(maximum-minimum>20)chromatic+=1}state={canvasDisplay:'block',canvasWidth:canvas.width,canvasHeight:canvas.height,opaquePixels:opaque,chromaticRatio:opaque>0?chromatic/opaque:0};if(opaque>1000&&state.chromaticRatio>0.5){resolve(state);return}}if(performance.now()>=deadline){resolve(state);return}requestAnimationFrame(sample)}document.querySelector('.page-turn-left').click();requestAnimationFrame(sample)}))()`,
   );
+  assert(curlState.canvasDisplay === 'block', 'WebGL page curl did not become visible');
   assert(curlState.canvasWidth > 0 && curlState.canvasHeight > 0, 'Page curl canvas was empty');
   assert(curlState.opaquePixels > 1_000, 'Page curl did not render an opaque sheet');
   assert(
