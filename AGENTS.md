@@ -14,38 +14,30 @@ Get-Content -Raw -LiteralPath .\COMMON-AGENTS.md
 
 ## プロジェクト概要
 
-- アプリ名は `n-mgram`。
-- Tauri 2、React、TypeScript、Vite で構成するデスクトップ漫画ビューア。
-- 読み取り先は `https://business.wel.my.id` の非公式API。APIが返すHTTPS画像URLはランタイム検証して表示する。
+- 漫画ビューア `n-mgram` を開発する。
 - 認証系、更新系、管理系APIは実装・呼び出ししない。
+- 非公式APIのレスポンスを必ずランタイム検証し、アクセス頻度を抑える。
+
+具体的な手順・構成・知見は [findings.md](findings.md#agents-2) に移動しました。着手前に該当条件を確認してください。
 
 ## 開発コマンド
 
-```powershell
-bun install
-bun run dev
-bun run tauri dev
-bun run check
-bun run tauri build --no-bundle
-```
-
-APIは非公式仕様なので、レスポンスを必ずランタイム検証し、アクセス頻度を抑える。
+具体的な手順・構成・知見は [findings.md](findings.md#agents-3) に移動しました。着手前に該当条件を確認してください。
 
 ## 依存更新の注意
 
-- Tauriプラグインはnpm版とRustクレート版のmajor/minorが一致しないとデスクトップ・Androidのコンパイルが失敗する。Dependabotのcargo PRをマージする前に `bun pm view` で対応するnpm版の存在を確認し、同じPRで両方を更新する。2026-10-11にhttp npm 2.8.2とRust 2.8.1の組み合わせを確認した。PR #22のRust版だけの更新では両CIがバージョン不一致で失敗した。
-- 旧ベースのDependabot PRでCIが失敗する場合は `@dependabot rebase` で最新mainに追従させると解消することがある（prettier修正や先行マージとの競合時）。2026-10-11のPR #19・#20・#22では自動修復コミットがあるためrebaseが拒否され、`@dependabot recreate` で再作成してからCIを再実行した。
+具体的な手順・構成・知見は [findings.md](findings.md#agents-4) に移動しました。着手前に該当条件を確認してください。
 
 ## 依存更新の確認
 
-- npm向けDependabot PRでは `package.json` だけが変わり、Bunのロックが更新されない場合がある（PR #1で確認）。CI定義と同じBunで `bun install` を実行し、`bun.lock` の差分と `bun install --frozen-lockfile` の成功を確認する。
-- 2026-09-23以降は Dependabot の `bun` エコシステムを使用し、CI 再失敗時の自動修復は `bun.lock` だけを変更する。修復後は `workflow_dispatch` で読み取り権限の CI を実行し、checkout の認証情報を残さない。根拠は `.github/dependabot.yml` と `.github/workflows/dependabot-automation.yml`。
-- 間接依存の脆弱性はPR対象外にも発生するため、更新時は `bun audit` と `bun run check` を実行する。overridesを解除・変更するときも、監査0件と既存テストを維持する。
-- 開発用依存の変更だけで配布版を更新するかは、アプリ・Rust・本番依存の差分と、同じ環境で作った既存タグ／更新後の `dist/` のファイル一覧・ハッシュで判断する。Vitestの更新番号だけを理由に配布版を上げない。2026-09-13の比較結果は `verification.md` を参照する。
+具体的な手順・構成・知見は [findings.md](findings.md#agents-5) に移動しました。着手前に該当条件を確認してください。
 
 ## CI監査修復の注意
 
-- 2026-10-05: jsdom30.1.2はundici ^8.11.2を要求する。旧override7.29.0は公式range外で新規脆弱性も残すため解除した。jsdom更新時は親packageの要求範囲を確認し、監査だけでなくVitestのDOMテストとChrome E2Eも実行する。
-- 2026-10-11: `source-map-js` 1.2.1は `jsdom` と `vite` の両経路から導入され、`bun audit` のGHSA-68fv-2mgg-jv7qに該当した。`package.json` のoverrideで1.2.2へ固定し、`bun.lock` と監査結果を同時に確認する。WindowsのChrome E2Eは、この環境でAdGuardによるlocalhostへのスクリプト注入が観測され、初回のViteモジュール読み込みが10秒を超えたため、初回履歴タブの待機を30秒にしている。根拠は `scripts/e2e-history-progress.mjs` と2026-10-11の実測。
-- 2026-10-11: Linux CIのソフトウェアWebGLでは、ページカールの一時表示をCDPで50msごとにポーリングすると描画を見逃すことがあった。E2Eではクリック直後からページ内の描画フレームでcanvasの表示とピクセルを観測し、実画像色を確認する。根拠は `scripts/e2e-history-progress.mjs` とmain CI run 38124517008。
-- 2026-10-11: `typescript-eslint` 8.71.1の公式peer範囲はTypeScript `<6.1.0`で、TypeScript 7.0.2をまだ適用できない。`bun pm view typescript-eslint@8.71.1 peerDependencies`で再確認してから更新する。
+具体的な手順・構成・知見は [findings.md](findings.md#agents-6) に移動しました。着手前に該当条件を確認してください。
+
+## findings.md の確認と記録
+
+- [COMMON-AGENTS.md](COMMON-AGENTS.md) を全文読了した後、調査・計画・コマンド実行・編集の前に [findings.md](findings.md) も先頭から末尾まで全文読む。出力省略や要約を読了として扱わない。
+- 構成一覧、環境情報、コマンド、調査結果、過去の事実は `findings.md` に記録する。このファイルには目的、純粋な行動義務と禁止条件を残す。
+- 変更履歴と実測検証を記録し、ユーザーの指示、変更禁止、秘密情報保護、観測可能な完了条件を弱めない。
