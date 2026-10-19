@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- workflow名を含むconcurrency groupへ統一し、同じ参照の別workflowを誤って取り消さずに古いCIだけを中止するようにした。
+
 ### Security
 
 - CI の依存監査で検出された `source-map-js` のサービス拒否脆弱性を解消するため、間接依存を修正版へ固定した。
