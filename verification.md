@@ -95,3 +95,8 @@ WebGL2を利用できない環境では従来描画へ自動復旧するため�
 - 公式npm registryとGitHub Advisory Databaseで修正版と依存範囲を確認した。brace-expansion 5.0.12を採用し、固定lockと全依存監査（0件）、lint・型・ビルドを検証する。
 - jsdom30.1.2とundici8.11.2の公式依存範囲を保持し、bun run checkのVitest・Chrome E2E・全体formatも確認する。WindowsとAndroidのコンパイルはPR CI結果で確認する。
 - ローカル結果: CIと同じBun（1.3.14）で固定lockとbun audit成功（既知脆弱性0件）。bun run checkも成功し、25ファイル・130テストとChrome E2E（履歴移行、新着章、失敗時retry、削除、responsive、ページカール）を確認。
+
+## 2026-10-20: Dependabot 月末一括処理
+
+- `.github/dependabot.yml` は毎月28日00:00、`.github/workflows/dependabot-automation.yml` は同日18:00（いずれも `Asia/Tokyo`）に設定した。呼び出し先は検証済み共通 workflow の固定 SHA とし、現在の head SHA、Dependabot の資格状態、全 PR チェック成功を merge 前に再確認する。
+- YAML 構文、変更差分、空白エラーをローカルで検査した。実際の月末 schedule と Dependabot PR の merge 経路は、次回の毎月28日実行で確認する。
