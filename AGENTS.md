@@ -18,23 +18,23 @@ Get-Content -Raw -LiteralPath .\COMMON-AGENTS.md
 - 認証系、更新系、管理系APIは実装・呼び出ししない。
 - 非公式APIのレスポンスを必ずランタイム検証し、アクセス頻度を抑える。
 
-具体的な手順・構成・知見は [findings.md](findings.md#agents-2) に移動しました。着手前に該当条件を確認してください。
+具体的な手順・構成・知見は [findings.md](findings.md) に集約しています。
 
 ## 開発コマンド
 
-具体的な手順・構成・知見は [findings.md](findings.md#agents-3) に移動しました。着手前に該当条件を確認してください。
+具体的な手順・構成・知見は [findings.md](findings.md) に集約しています。
 
 ## 依存更新の注意
 
-具体的な手順・構成・知見は [findings.md](findings.md#agents-4) に移動しました。着手前に該当条件を確認してください。
+具体的な手順・構成・知見は [findings.md](findings.md) に集約しています。
 
 ## 依存更新の確認
 
-具体的な手順・構成・知見は [findings.md](findings.md#agents-5) に移動しました。着手前に該当条件を確認してください。
+具体的な手順・構成・知見は [findings.md](findings.md) に集約しています。
 
 ## CI監査修復の注意
 
-具体的な手順・構成・知見は [findings.md](findings.md#agents-6) に移動しました。着手前に該当条件を確認してください。
+具体的な手順・構成・知見は [findings.md](findings.md) に集約しています。
 
 ## findings.md の確認と記録
 
