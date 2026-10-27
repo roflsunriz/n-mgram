@@ -6,7 +6,7 @@
       "name": "n-mgram",
       "dependencies": {
         "@tauri-apps/api": "2.12.3",
-        "@tauri-apps/plugin-http": "2.8.2",
+        "@tauri-apps/plugin-http": "2.8.3",
         "@tauri-apps/plugin-opener": "2.7.1",
         "@tauri-apps/plugin-process": "2.4.0",
         "@tauri-apps/plugin-updater": "2.13.3",
@@ -202,7 +202,7 @@
 
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.12.2", "", { "os": "win32", "cpu": "x64" }, "sha512-cQXI2ZaZmwBDt0XATCqASVanYizxkEE3ceQVlVHXaQ51HzsQUWA04c9Nz7LrrY2lgAu3jFMyat+8Yz3Z2R2qBA=="],
 
-    "@tauri-apps/plugin-http": ["@tauri-apps/plugin-http@2.8.2", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-xVHnZdIkPY9+/ejg0ycVpVvJ5yuILFl6IEbE/wQFDsDgZmHTbFg7+vkkvIQeVtydhHrSFzQk3BWzSjWEVAvvUA=="],
+    "@tauri-apps/plugin-http": ["@tauri-apps/plugin-http@2.8.3", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-MrgCnnxSnzxkMX+Tk1XXB8rSI9hfhUHQmtbn0EpflEDcSx04K1BDfrv51tcK27SCuU/B1j8sNHL0UZur/1iqKA=="],
 
     "@tauri-apps/plugin-opener": ["@tauri-apps/plugin-opener@2.7.1", "", { "dependencies": { "@tauri-apps/api": "^2.12.0" } }, "sha512-XkXdt30rontti9TII/gBBxFRXWfj8DiprFW7RgBFRBj1OhdfjBNVcFqSEWkkZ4hXafHnuEnB7F1sFsmu6uyywQ=="],
 
