@@ -2,6 +2,7 @@
 
 - 非公式APIはread-only利用に限定し、認証・更新・管理APIを実装しない。全responseとHTTPS画像URLをruntime検証し、頻度を抑える。
 - Tauri pluginはnpm版とRust crate版のmajor/minorを揃える。片側だけのDependabot PRはWindows/Android両方でcompile失敗するため、公開済みnpm版を確認して同じPRで更新する。
+- React と React DOM は完全に同じバージョンを使用する。Dependabot が片方だけ更新した場合は、同じ PR で対となるパッケージと lockfile を更新する。
 - npm向けDependabotは `package.json` だけ変えてBun lockを更新しない場合がある。CIと同じBunでlockを再生成し、frozen installを確認する。自動修復commitがあるPRはrebase拒否時にrecreateする。
 - jsdom更新では親が要求するundici範囲を外すoverrideを残さない。監査だけでなくDOM testとChrome E2Eを実行する。Linux software WebGLのpage curlはframe内でcanvas表示とpixelを観測し、外部50ms pollingだけに頼らない。
 - minimatch の GHSA-g3hv-75wg-m249 は 11.0.1 で修正される。ESLint と typescript-eslint は 10 系を要求するため、両者が追従するまで override の互換性を lint と CI で確認する。
