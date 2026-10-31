@@ -6,11 +6,13 @@
 
 ### Changed
 
+- Tauri updater の Rust 版と npm 版を 2.14 系に揃え、デスクトップと Android のビルド時に依存バージョンが不一致になる問題を防いだ。
 - GitHub Actions の月間利用時間を抑えるため、Dependabot version update と自動マージを毎週・即時処理から毎月28日（Asia/Tokyo）の月末一括処理へ変更した。
 - workflow名を含むconcurrency groupへ統一し、同じ参照の別workflowを誤って取り消さずに古いCIだけを中止するようにした。
 
 ### Security
 
+- Zod、undici、minimatch の既知のサービス拒否などの脆弱性を解消するため、修正版へ更新した。
 - CI の依存監査で検出された `source-map-js` のサービス拒否脆弱性を解消するため、間接依存を修正版へ固定した。
 - brace-expansion の既知DoSを解消するため、既存 override を5.0.12へ更新し、Bunのlockを再生成した。
 - DOMテストの公式依存範囲と脆弱性修正版をそろえるため、jsdomを30.1.2へ更新し、undiciを旧7.29.0へ固定するoverrideを解除した。
