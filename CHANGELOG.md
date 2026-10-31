@@ -6,6 +6,7 @@
 
 ### Changed
 
+- React と React DOM を同じ 19.3.1 へ更新し、バージョン不一致による描画とテストの失敗を防いだ。
 - Tauri updater の Rust 版と npm 版を 2.14 系に揃え、デスクトップと Android のビルド時に依存バージョンが不一致になる問題を防いだ。
 - GitHub Actions の月間利用時間を抑えるため、Dependabot version update と自動マージを毎週・即時処理から毎月28日（Asia/Tokyo）の月末一括処理へ変更した。
 - workflow名を含むconcurrency groupへ統一し、同じ参照の別workflowを誤って取り消さずに古いCIだけを中止するようにした。
