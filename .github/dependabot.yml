@@ -4,20 +4,20 @@ updates:
     directory: '/'
     schedule:
       interval: cron
-      cronjob: "0 0 28 * *"
-      timezone: "Asia/Tokyo"
+      cronjob: '0 0 28 * *'
+      timezone: 'Asia/Tokyo'
     open-pull-requests-limit: 5
   - package-ecosystem: cargo
     directory: '/src-tauri'
     schedule:
       interval: cron
-      cronjob: "0 0 28 * *"
-      timezone: "Asia/Tokyo"
+      cronjob: '0 0 28 * *'
+      timezone: 'Asia/Tokyo'
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
       interval: cron
-      cronjob: "0 0 28 * *"
-      timezone: "Asia/Tokyo"
+      cronjob: '0 0 28 * *'
+      timezone: 'Asia/Tokyo'
     open-pull-requests-limit: 5
