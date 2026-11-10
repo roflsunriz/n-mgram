@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- READMEでfindings.mdへの案内に置き換わっていた本文を復元し、構成・開発・検証の説明をREADMEから直接読めるようにした。移動後のREADME更新は保持した。
+
+
 ### Changed
 
 - React と React DOM を同じ 19.3.1 へ更新し、バージョン不一致による描画とテストの失敗を防いだ。
